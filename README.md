@@ -172,3 +172,16 @@ the payload and the headshots are all inlined, so the file works from `file://`
 with no server and no network — you can move it, email it or drop it in a shared
 folder and it still plays. It has Replay and Show-final controls and scales to
 the window.
+
+## The board writes a directory, not a file
+
+`lounge board` writes `output/board.html` plus an `output/headshots/` folder it
+references relatively. Keep them together, or move them together.
+
+This differs deliberately from `--format html`, which inlines its headshots as
+data URIs so a single scene can be moved or emailed intact. The board cannot
+afford that: a player who speaks in twenty scenes was embedded twenty times
+over, which put a 38-scene board at **7.9 MB** and growing linearly with the
+transcript. Writing each photo once dropped the page to **371 KB** with a 2.8 MB
+sidecar shared across every scene — so page size now tracks cast size rather
+than scene count.

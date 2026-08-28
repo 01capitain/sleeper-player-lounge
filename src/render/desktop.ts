@@ -136,6 +136,12 @@ export interface BuildBoardOptions extends TimelineOptions {
   draft?: SelectedDraft | null;
   /** Passed through to `resolveHeadshots` (cache dir, injected fetch, env). */
   headshotOptions?: ResolveHeadshotsOptions;
+  /**
+   * Directory the board HTML will be written to. Headshots are copied into a
+   * `headshots/` folder beside it and referenced relatively. Omit to skip
+   * headshots entirely — every avatar then falls back to its monogram.
+   */
+  assetDir?: string;
   /** Where `desktop.*`, `lounge.css` and `render.js` live. */
   templatesDir?: string;
   /** The `--format` shown in the export command. Defaults to `mp4`. */
@@ -222,10 +228,13 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
     speakerIds.add(reaction.pick.playerId);
     for (const message of reaction.reactions) speakerIds.add(message.speakerPlayerId);
   }
-  const headshots = await inlineHeadshots(
-    [...speakerIds].filter((id) => id.length > 0),
-    opts.headshotOptions,
-  );
+  const headshots = opts.assetDir
+    ? await copyHeadshots(
+        [...speakerIds].filter((id) => id.length > 0),
+        opts.assetDir,
+        opts.headshotOptions,
+      )
+    : {};
 
   const rows: BoardRow[] = picks.map((pick) => {
     const reaction = byEventId.get(pick.eventId);
@@ -316,32 +325,60 @@ async function readSelectedDraft(): Promise<SelectedDraft | null> {
  * is simply absent, and the avatar falls back to its monogram — the same rule
  * the render template already follows, so this never fails a build.
  */
-async function inlineHeadshots(
+/** Where the board's headshots are written, relative to the HTML file. */
+export const HEADSHOT_DIR_NAME = 'headshots';
+
+/**
+ * Copy each player's headshot into a sidecar `headshots/` directory ONCE and
+ * reference it by relative URL.
+ *
+ * The single-scene `--format html` export inlines its headshots as data URIs so
+ * one file can be moved or emailed intact. The board cannot afford that: a
+ * player who speaks in twenty scenes was embedded twenty times over, which put a
+ * 38-scene board at 7.9MB and growing linearly with the transcript. Here the
+ * same photo is written once and referenced by every scene that needs it, so the
+ * page size stops tracking scene count and starts tracking cast size.
+ *
+ * The trade is that the board is a directory, not a single file. That is the
+ * right call for a local tool you open next to a live draft, and the wrong one
+ * for something you share — which is why only this build does it.
+ */
+async function copyHeadshots(
   playerIds: readonly string[],
+  outDir: string,
   opts: ResolveHeadshotsOptions | undefined,
 ): Promise<Record<string, string>> {
   const resolved = await resolveHeadshots(playerIds, opts ?? {});
-  const inlined: Record<string, string> = {};
-  const seen = new Map<string, string>();
-  for (const [playerId, url] of Object.entries(resolved)) {
-    if (!url.startsWith('file://')) continue;
-    const cached = seen.get(url);
-    if (cached !== undefined) {
-      inlined[playerId] = cached;
-      continue;
-    }
+  const refs: Record<string, string> = {};
+  const entries = Object.entries(resolved).filter(([, url]) => url.startsWith('file://'));
+  if (entries.length === 0) return refs;
+
+  const dir = path.join(outDir, HEADSHOT_DIR_NAME);
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch {
+    return refs; // no directory, no headshots: the monogram avatar covers it
+  }
+
+  for (const [playerId, url] of entries) {
     try {
       const bytes = await readFile(fileURLToPath(url));
       // Sleeper serves PNG bytes from a .jpg URL, so sniff rather than trust it.
       const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
-      const uri = `data:image/${isPng ? 'png' : 'jpeg'};base64,${bytes.toString('base64')}`;
-      seen.set(url, uri);
-      inlined[playerId] = uri;
+      const file = `${safeAssetName(playerId)}.${isPng ? 'png' : 'jpg'}`;
+      await writeFile(path.join(dir, file), bytes);
+      refs[playerId] = `${HEADSHOT_DIR_NAME}/${file}`;
     } catch {
       // no headshot: the monogram avatar covers it
     }
   }
-  return inlined;
+  return refs;
+}
+
+/** A player id reduced to something safe to use as a filename. */
+export function safeAssetName(playerId: string): string {
+  const cleaned = playerId.replace(/[^A-Za-z0-9._-]/g, '_');
+  return cleaned.length > 0 ? cleaned : 'unknown';
 }
 
 // ---------------------------------------------------------------------------
@@ -521,8 +558,11 @@ export async function renderBoardHtml(
   outPath: string,
   opts: BuildBoardOptions = {},
 ): Promise<string> {
-  const html = await buildBoardHtml(opts);
-  await mkdir(path.dirname(outPath), { recursive: true });
+  const outDir = path.dirname(outPath);
+  await mkdir(outDir, { recursive: true });
+  // Headshots land in `<outDir>/headshots/` and are referenced relatively, so
+  // the board must know where it is being written before the model is built.
+  const html = await buildBoardHtml({ ...opts, assetDir: opts.assetDir ?? outDir });
   await writeFile(outPath, html, 'utf8');
   return outPath;
 }

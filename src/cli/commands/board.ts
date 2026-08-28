@@ -76,6 +76,13 @@ export async function runBoard(
     build.playerMeta = buildPlayerMeta(players);
   }
 
+  // Headshots are copied into `<outDir>/headshots/` and referenced relatively,
+  // so the model has to know where the page will land. `renderBoardHtml` fills
+  // this in by default, but we build the model ourselves below and would
+  // otherwise hand it a model whose avatars had already fallen back to
+  // monograms.
+  if (build.assetDir === undefined) build.assetDir = path.dirname(outPath);
+
   // Resolve the model once and hand it to the builder, so the summary below
   // is counted from exactly the page that was written — not a second read of
   // files a concurrent `simulate` may have appended to in between.
