@@ -1,0 +1,64 @@
+{
+  "slots": {
+    "1": {
+      "managerId": "871378632227131392",
+      "managerName": "The Jolly Rodgers"
+    },
+    "2": {
+      "managerId": "871390226608758784",
+      "managerName": "Jo-ju Brothers"
+    },
+    "3": {
+      "managerId": "871438999288467456",
+      "managerName": "Winless Wonders"
+    },
+    "4": {
+      "managerId": "871442069296734208",
+      "managerName": "Waddle u doing stepbro"
+    },
+    "5": {
+      "managerId": "872389075758452736",
+      "managerName": "BigTruzz"
+    },
+    "6": {
+      "managerId": "872413972094210048",
+      "managerName": "Nix ist los"
+    },
+    "7": {
+      "managerId": "1001524703443415040",
+      "managerName": "NYJ1000"
+    },
+    "8": {
+      "managerId": "471439689564286976",
+      "managerName": "Ja’Marr-io Kart Chase"
+    },
+    "9": {
+      "managerId": "871378632227131392",
+      "managerName": "The Jolly Rodgers"
+    },
+    "10": {
+      "managerId": "871390226608758784",
+      "managerName": "Jo-ju Brothers"
+    },
+    "11": {
+      "managerId": "871438999288467456",
+      "managerName": "Winless Wonders"
+    },
+    "12": {
+      "managerId": "871442069296734208",
+      "managerName": "Waddle u doing stepbro"
+    },
+    "13": {
+      "managerId": "872389075758452736",
+      "managerName": "BigTruzz"
+    },
+    "14": {
+      "managerId": "872413972094210048",
+      "managerName": "Nix ist los"
+    }
+  },
+  "sourceDraftId": "1389356983177465857",
+  "targetLeagueId": "1389387602825576448",
+  "targetLeagueName": "hotelkit Fantasies",
+  "version": 1
+}
