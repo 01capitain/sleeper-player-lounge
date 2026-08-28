@@ -347,6 +347,11 @@ export interface SleeperPlayer {
   active?: boolean;
   fantasy_positions?: string[] | null;
   search_rank?: number | null;
+  /**
+   * Average draft position, merged in from `data/players/adp.json`.
+   * Absent means UNRANKED, never "very late".
+   */
+  adp?: number;
 }
 
 // ---------------------------------------------------------------------------

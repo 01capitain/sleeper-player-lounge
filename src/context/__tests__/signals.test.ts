@@ -80,7 +80,7 @@ describe('stack', () => {
 describe('obvious fall', () => {
   it('reports how far a highly ranked player slid', () => {
     const pick = makePick({ pickNo: 60, playerId: 'star' });
-    const players = makePlayers([{ player_id: 'star', search_rank: 20 }]);
+    const players = makePlayers([{ player_id: 'star', adp: 20 }]);
     const signals = computeDraftSignals(pick, [], players);
     expect(signals.fellBelowRank).toBe(40);
     expect(computeDraftSignalDetail(pick, [], players).expectedRank).toBe(20);
@@ -88,11 +88,11 @@ describe('obvious fall', () => {
 
   it('is undefined for a small, unremarkable slide', () => {
     const pick = makePick({ pickNo: 25, playerId: 'star' });
-    const players = makePlayers([{ player_id: 'star', search_rank: 20 }]);
+    const players = makePlayers([{ player_id: 'star', adp: 20 }]);
     expect(computeDraftSignals(pick, [], players).fellBelowRank).toBeUndefined();
   });
 
-  it('is undefined when Sleeper has no search_rank — never guess', () => {
+  it('is undefined when the player has no ADP — never guess', () => {
     const pick = makePick({ pickNo: 200, playerId: 'star' });
     expect(computeDraftSignals(pick, [], makePlayers([{ player_id: 'star' }])).fellBelowRank).toBeUndefined();
     expect(computeDraftSignals(pick, [], {}).fellBelowRank).toBeUndefined();
@@ -100,7 +100,7 @@ describe('obvious fall', () => {
 
   it('ignores Sleeper sentinel ranks for unranked players', () => {
     const pick = makePick({ pickNo: 200, playerId: 'star' });
-    const players = makePlayers([{ player_id: 'star', search_rank: 9999999 }]);
+    const players = makePlayers([{ player_id: 'star', adp: 9999999 }]);
     expect(computeDraftSignals(pick, [], players).fellBelowRank).toBeUndefined();
   });
 });
@@ -113,11 +113,11 @@ describe('quiet picks', () => {
 
 describe('draft surprise is symmetric and league-relative', () => {
   const players = makePlayers([
-    { player_id: 'star', full_name: 'Falling Star', position: 'WR', search_rank: 10 },
-    { player_id: 'guy', full_name: 'Reached Guy', position: 'WR', search_rank: 90 },
+    { player_id: 'star', full_name: 'Falling Star', position: 'WR', adp: 10 },
+    { player_id: 'guy', full_name: 'Reached Guy', position: 'WR', adp: 90 },
   ]);
 
-  it('reports a reach when a player goes far ahead of his search_rank', () => {
+  it('reports a reach when a player goes far ahead of his ADP', () => {
     // rank 90, taken at 60 => 30 picks early, well past a 14-team threshold of 18.
     const pick = makePick({ pickNo: 60, playerId: 'guy', position: 'WR' });
     const signals = computeDraftSignals(pick, [], players, { teams: 14 });
@@ -125,14 +125,14 @@ describe('draft surprise is symmetric and league-relative', () => {
     expect(signals.fellBelowRank).toBeUndefined();
   });
 
-  it('still reports a fall when a player slides past his search_rank', () => {
+  it('still reports a fall when a player slides past his ADP', () => {
     const pick = makePick({ pickNo: 45, playerId: 'star', position: 'WR' });
     const signals = computeDraftSignals(pick, [], players, { teams: 14 });
     expect(signals.fellBelowRank).toBe(35);
     expect(signals.reachedAboveRank).toBeUndefined();
   });
 
-  it('says nothing when the pick lands near his search_rank', () => {
+  it('says nothing when the pick lands near his ADP', () => {
     const pick = makePick({ pickNo: 14, playerId: 'star', position: 'WR' });
     const signals = computeDraftSignals(pick, [], players, { teams: 14 });
     expect(signals.fellBelowRank).toBeUndefined();
@@ -157,7 +157,7 @@ describe('draft surprise is symmetric and league-relative', () => {
     expect(detail.surpriseThreshold).toBe(10);
   });
 
-  it('makes no claim when the player has no search_rank', () => {
+  it('makes no claim when the player has no ADP', () => {
     const noRank = makePlayers([{ player_id: 'ghost', position: 'WR' }]);
     const pick = makePick({ pickNo: 200, playerId: 'ghost', position: 'WR' });
     const signals = computeDraftSignals(pick, [], noRank, { teams: 8 });

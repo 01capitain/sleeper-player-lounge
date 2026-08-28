@@ -93,6 +93,7 @@ export function makePlayers(
       team: entry.team ?? null,
       active: entry.active ?? true,
       search_rank: entry.search_rank ?? null,
+      ...(entry.adp !== undefined ? { adp: entry.adp } : {}),
       ...entry,
     };
   }

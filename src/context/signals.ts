@@ -16,7 +16,7 @@ export interface DraftSignalOptions {
   /** N — how many of those must share the position. Default 3. */
   positionRunThreshold?: number;
   /**
-   * How far from his `search_rank` a Pick must land before it is worth
+   * How far from his ADP a Pick must land before it is worth
    * remarking on, expressed in ROUNDS rather than picks.
    *
    * A flat pick count means different things in different leagues: 12 picks is
@@ -53,7 +53,7 @@ export interface DraftSignalDetail extends DraftSignals {
   positionRunWindow?: number;
   /** Names already on this Manager's roster that share the drafted player's NFL team. */
   stackWith?: string[];
-  /** The `search_rank` the fall or reach was measured against. */
+  /** The ADP the fall or reach was measured against. */
   expectedRank?: number;
   /** Picks of slack that were required before calling it. */
   surpriseThreshold?: number;
@@ -64,7 +64,7 @@ export interface DraftSignalDetail extends DraftSignals {
  *
  * `priorPicks` are the Picks made before this one; order does not matter, they
  * are sorted by `pickNo` here. `players` is the cached Sleeper `/players/nfl`
- * dataset, used only for `search_rank` and for filling in a missing position.
+ * dataset enriched with ADP, used only for `adp` and for filling in a missing position.
  */
 export function computeDraftSignals(
   pick: Pick,
@@ -177,29 +177,33 @@ interface Surprise {
 }
 
 /**
- * Compare where a player actually went against Sleeper's `search_rank`, which is
- * the closest thing the public API exposes to an average draft position.
+ * Compare where a player actually went against his average draft position,
+ * merged in from the precomputed `data/players/adp.json` artifact.
  *
- * The comparison is symmetric: going far LATER than his rank is a fall, going
- * far EARLIER is a reach. Both are things a group chat notices, and a reach is
+ * The comparison is symmetric: going far LATER than his ADP is a fall, going far
+ * EARLIER is a reach. Both are things a group chat notices, and a reach is
  * usually the funnier of the two because somebody has to defend it.
  *
- * `search_rank` reflects the CURRENT season only. That is exactly what a draft
- * signal wants, and it is why this is never used to grade past seasons: a player
- * who busted last year carries a depressed rank this year, so scoring history
- * against it would quietly cancel the very disappointment worth talking about.
+ * `search_rank` is deliberately NOT used as a fallback. It is a talent/search
+ * ordering, not a draft position — it ranks Josh Allen around 4th overall, which
+ * would manufacture a nonsense "he fell 30 picks" on a completely normal pick.
+ * A wrong signal is worse than a missing one, so: no ADP, no claim.
  *
- * No `search_rank`, no claim.
+ * ADP reflects the CURRENT season only. That is exactly what a draft signal
+ * wants, and it is why it never grades past seasons: a player who busted last
+ * year carries a depressed ADP this year, so scoring history against it would
+ * quietly cancel the very disappointment worth talking about.
  */
 function detectSurprise(
   pick: Pick,
   players: Record<string, SleeperPlayer>,
   opts: Required<DraftSignalOptions>,
 ): Surprise | null {
-  const rank = players[pick.playerId]?.search_rank;
+  const rank = players[pick.playerId]?.adp;
   if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0) return null;
-  // Sleeper parks unranked players at absurd sentinel ranks; those are not falls.
-  if (rank > 10000) return null;
+  // The artifact drops Sleeper's 1000 sentinel, but guard anyway: an unranked
+  // player must produce no claim rather than an enormous fabricated fall.
+  if (rank >= 1000) return null;
 
   const threshold = surpriseThreshold(opts);
   const delta = pick.pickNo - rank;

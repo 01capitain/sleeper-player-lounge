@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0004
+---
+
 # `search_rank` is the ADP proxy, and it is never used to grade past seasons
 
 Draft reactions need an expectation to compare a pick against — "he fell", "that's a
@@ -6,9 +10,10 @@ reach" — and the league's own draft slot is a poor baseline. hotelkit Fantasie
 rounds; one manager reaching badly skews a player's apparent expectation.
 
 Sleeper's public API exposes no ADP field. A full player object was pulled and inspected:
-44 keys, none named `adp` or `average_draft_position`. The closest available signal is
-**`search_rank`** (Travis Kelce = 93), Sleeper's own global ordering. We use it as the ADP
-proxy.
+44 keys, none named `adp` or `average_draft_position`. The closest signal on the *player* object is
+**`search_rank`** (Travis Kelce = 93), Sleeper's own global ordering, and we initially used it
+as the ADP proxy. **That was wrong — see ADR 0004.** `search_rank` is a talent/search ordering,
+not a draft position: it ranks Josh Allen around 4th overall.
 
 ## Consequences
 

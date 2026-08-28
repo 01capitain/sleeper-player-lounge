@@ -25,6 +25,8 @@ export const configFile = path.join(configDir, 'app.json');
 // --- players ----------------------------------------------------------------
 export const playersDir = path.join(dataDir, 'players');
 export const starPlayersFile = path.join(playersDir, 'star-players.json');
+/** Precomputed ADP artifact, built by `scripts/build-adp.mjs`. */
+export const adpFile = path.join(playersDir, 'adp.json');
 export const relationshipsSeedFile = path.join(playersDir, 'relationships.seed.json');
 
 // --- lounge state and transcripts -------------------------------------------

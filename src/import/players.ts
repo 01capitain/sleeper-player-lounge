@@ -10,6 +10,7 @@
 import type { SleeperClient } from '../sleeper/client.js';
 import type { NflTeammate, SleeperPlayer } from '../types.js';
 import { log } from '../util/log.js';
+import { enrichWithAdp, loadAdp } from './adp.js';
 
 /** A players dataset keyed by Sleeper player id. */
 export type PlayerIndex = Record<string, SleeperPlayer>;
@@ -46,6 +47,19 @@ export async function ensurePlayerCache(
   opts: EnsurePlayerCacheOptions = {},
 ): Promise<PlayerIndex> {
   const players = await client.getAllPlayers(opts);
+
+  // ADP is a precomputed artifact (`data/players/adp.json`, built by
+  // scripts/build-adp.mjs). Merge it in here so every consumer sees one
+  // enriched player record rather than joining two sources. A missing artifact
+  // is not an error — draft-surprise signals simply go silent.
+  const artifact = await loadAdp();
+  if (artifact) {
+    enrichWithAdp(players, artifact);
+    log.debug('adp merged', `${artifact.rankedCount} ranked · ${artifact.field} · ${artifact.season}`);
+  } else {
+    log.debug('adp artifact absent', 'run `node scripts/build-adp.mjs` to enable reach/fall signals');
+  }
+
   log.debug('players dataset ready', `${Object.keys(players).length} entries`);
   return players;
 }
