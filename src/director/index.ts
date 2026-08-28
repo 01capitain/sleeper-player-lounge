@@ -4,7 +4,8 @@
  * Re-exports the `LoungeDirector` interface and the `claude -p` implementation,
  * plus `StubDirector` — a deterministic canned Director with no LLM involved.
  * Milestone A explicitly requires rendering a hardcoded reaction before any
- * model exists, and the renderer and tests need something cheap and repeatable.
+ * model exists, and the renderer and tests need something offline and
+ * repeatable.
  */
 import type { LoungeContext, LoungeDirector, Reaction, ReactionMessage } from '../types.js';
 
@@ -27,7 +28,6 @@ export {
   type DirectorSpawn,
   type DirectorSpawnOptions,
   type DirectorSpawnResult,
-  type DirectorUsage,
   type FailedEventRecord,
 } from './claude-cli.js';
 

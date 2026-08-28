@@ -4,7 +4,7 @@ The handoff plan assumed an OpenAI-compatible HTTP endpoint behind a `LoungeDire
 
 ## Consequences
 
-The CLI's default system prompt is expensive — measured at 15,269 cached input tokens per call. The Director must therefore always invoke with the full isolation flag set:
+The Director must always invoke with the full isolation flag set:
 
 ```
 --model sonnet --tools "" --output-format json --no-session-persistence \
@@ -12,19 +12,19 @@ The CLI's default system prompt is expensive — measured at 15,269 cached input
 --system-prompt-file <director prompt> --json-schema <reaction schema>
 ```
 
-Measured on a bare one-line prompt: $0.0644 with CLI defaults, $0.0301 with `--system-prompt`
-alone, **$0.0042 with the full set**. Dropping any of these flags multiplies cost by up to 15x,
-so the flag set is asserted in tests.
+These flags are what make the Director a closed box, and the flag set is asserted in tests:
 
-**Real calls cost more than that benchmark**, because a real Context is far larger than a
-one-line prompt: measured **$0.0165–$0.0187 per pick** in production runs, so roughly **$4 for
-a 238-pick draft replay** rather than $1. The flag set is still worth every bit of what it
-saves — it is the difference between ~$0.017 and ~$0.08 per pick — but budget against the
-higher figure. `total_cost_usd` is surfaced on every run so the real number is never a guess.
+- `--tools ""` — the Director cannot read or write the filesystem and cannot reach the network. Its only input is the Context we hand it in argv.
+- `--setting-sources ""`, `--disable-slash-commands`, `--strict-mcp-config` — the operator's personal settings, skills, hooks, output styles and MCP servers cannot leak into the prompt or the generated dialogue.
+- `--no-session-persistence` — a 238-pick replay does not litter the operator's session history.
+- `--system-prompt-file` — the behavioural contract in `prompts/director.system.md` is the whole system prompt, not an addendum to the CLI's default one.
+- `--output-format json` — the result is read from `structured_output` in a machine-readable envelope rather than scraped out of prose.
+
+A Director whose output depends on whose machine it ran on is not reproducible: the same Pick and the same Context must produce the same kind of scene for every operator and in CI. Dropping any one of these flags quietly reintroduces that dependency, which is why they are checked against the argv a fake spawn sees rather than left to convention.
 
 The result is read from `structured_output` in the CLI's JSON envelope. Schema enforcement at the model boundary is not a substitute for local validation: `maxItems` and `maxLength` are still checked with ajv before anything is persisted.
 
-`--bare` looks like the natural fit for this but must not be used: it forces `ANTHROPIC_API_KEY` authentication and never reads OAuth or the keychain, which defeats the no-API-key property.
+`--bare` looks like the natural fit for this but must not be used: it forces `ANTHROPIC_API_KEY` authentication and never reads OAuth or the keychain, which defeats the no-API-key property the whole design rests on.
 
 The `LoungeDirector` interface is retained so an HTTP adapter can replace the subprocess without touching the context builder.
 

@@ -10,7 +10,7 @@
  * is there for when you already know you want the animation.
  *
  * Running it twice is not an error. The second run finds the Pick already has a
- * Reaction, re-renders that Reaction instead of generating a new one — free,
+ * Reaction, re-renders that Reaction instead of generating a new one —
  * identical, and still ending in a picture. That is the §14 idempotency rule
  * doing something useful rather than something obstructive.
  */
@@ -164,7 +164,7 @@ export interface DemoOptions {
   format?: RenderFormat;
   /** `--no-open` sets this to false. */
   open?: boolean;
-  /** Use `StubDirector` — free, deterministic, no LLM. */
+  /** Use `StubDirector` — deterministic, offline, no LLM. */
   stub?: boolean;
 }
 
@@ -265,7 +265,7 @@ function banner(choice: DemoChoice, format: RenderFormat, stub: boolean): string
     `  Player      ${pick.playerName}${where ? ` (${where})` : ''}`,
     `  Manager     ${pick.managerName}`,
     `  Why         ${choice.reason}`,
-    `  Director    ${stub ? 'StubDirector (free, no LLM)' : 'claude -p'}`,
+    `  Director    ${stub ? 'StubDirector (deterministic, no LLM)' : 'claude -p'}`,
     `  Format      ${format}`,
     '',
     '  Directing the scene…',
@@ -282,7 +282,7 @@ function report(result: ProcessPickResult, format: RenderFormat, wantsOpen: bool
   }
 
   if (result.skipped) {
-    lines.push('  This pick already had a Reaction — showing it again rather than paying twice.');
+    lines.push('  This pick already had a Reaction — showing it again rather than directing it twice.');
     lines.push('');
   }
 
@@ -291,10 +291,8 @@ function report(result: ProcessPickResult, format: RenderFormat, wantsOpen: bool
   lines.push(...formatDialogue(result.reaction, '    '));
   lines.push('');
 
-  if (result.costUsd !== undefined) {
-    lines.push(`  Director cost   $${result.costUsd.toFixed(4)}`);
-  } else if (result.skipped) {
-    lines.push('  Director cost   $0.0000 (re-rendered from disk)');
+  if (result.skipped) {
+    lines.push('  Director        not called (re-rendered from disk)');
   }
 
   if (result.outputPath) {

@@ -20,7 +20,6 @@ import {
   openerFor,
   processPick,
   processedEventIds,
-  totalCost,
   formatDialogue,
 } from '../pipeline.js';
 import { cleanWorkspaces, inertContextDeps, makePick, workspace } from './harness.js';
@@ -205,16 +204,6 @@ describe('small helpers', () => {
     expect(openerFor('linux')).toBe('xdg-open');
     expect(openerFor('win32')).toBe('start');
     expect(openerFor('aix')).toBeNull();
-  });
-
-  it('sums the Director cost, or reports none', () => {
-    expect(totalCost([])).toBeUndefined();
-    expect(
-      totalCost([
-        { eventId: 'a', attempt: 1, model: 'sonnet', totalCostUsd: 0.004 },
-        { eventId: 'a', attempt: 2, model: 'sonnet', totalCostUsd: 0.004 },
-      ]),
-    ).toBeCloseTo(0.008);
   });
 
   it('formats the dialogue as readable text', () => {

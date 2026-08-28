@@ -47,7 +47,7 @@ export interface WatchOptions {
   /** `--no-render` sets this to false. */
   render?: boolean;
   format?: RenderFormat;
-  /** Use `StubDirector` — free, deterministic, no LLM. */
+  /** Use `StubDirector` — deterministic, offline, no LLM. */
   stub?: boolean;
 }
 

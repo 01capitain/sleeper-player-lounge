@@ -153,29 +153,33 @@ describe('reach and disappointment thresholds', () => {
     });
   });
 
-  describe('disappointment — a flat 8 picks past consensus', () => {
-    it('is disappointed 9 picks after his ADP', () => {
-      const s = at('mid', 49);
-      expect(s.fellBelowRank).toBe(9);
+  describe('disappointment — a flat 16 picks past consensus', () => {
+    it('is disappointed 17 picks after his ADP', () => {
+      const s = at('mid', 57);
+      expect(s.fellBelowRank).toBe(17);
       expect(s.reachedAboveRank).toBeUndefined();
     });
 
-    it('is not disappointed at exactly 8 picks past', () => {
-      expect(at('mid', 48).fellBelowRank).toBeUndefined();
+    it('is not disappointed at exactly 16 picks past', () => {
+      expect(at('mid', 56).fellBelowRank).toBeUndefined();
     });
 
-    it('applies the same 8-pick line everywhere on the board', () => {
-      expect(at('elite', 19).fellBelowRank).toBe(9);
-      expect(at('deep', 109).fellBelowRank).toBe(9);
+    it('shrugs off a 9-pick slide that the old 8-pick line would have flagged', () => {
+      expect(at('mid', 49).fellBelowRank).toBeUndefined();
+    });
+
+    it('applies the same 16-pick line everywhere on the board', () => {
+      expect(at('elite', 27).fellBelowRank).toBe(17);
+      expect(at('deep', 117).fellBelowRank).toBe(17);
     });
 
     it('marks him disappointed in the detail', () => {
       const d = computeDraftSignalDetail(
-        makePick({ pickNo: 49, playerId: 'mid', position: 'WR' }), [], board,
+        makePick({ pickNo: 57, playerId: 'mid', position: 'WR' }), [], board,
       );
       expect(d.disappointed).toBe(true);
       expect(d.expectedRank).toBe(40);
-      expect(d.surpriseThreshold).toBe(8);
+      expect(d.surpriseThreshold).toBe(16);
     });
   });
 

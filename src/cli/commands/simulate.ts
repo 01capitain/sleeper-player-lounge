@@ -8,7 +8,7 @@
  *   --all         the whole draft, `--limit <n>` at a time
  *
  * `--all` shares a single chromium across every render. Launching one browser
- * per Pick costs ~300ms each and 238 chromium processes over a full replay, so
+ * per Pick means ~300ms each and 238 chromium processes over a full replay, so
  * the batch path opens one and hands it to every `processPick` call.
  *
  * stdout carries the human-readable summary and the generated dialogue; every
@@ -43,7 +43,7 @@ export interface SimulateOptions {
   /** `--no-render` sets this to false. */
   render?: boolean;
   format?: RenderFormat;
-  /** Use `StubDirector` — free, deterministic, no LLM. */
+  /** Use `StubDirector` — deterministic, offline, no LLM. */
   stub?: boolean;
   /** Open each rendered asset with the platform opener. */
   open?: boolean;
@@ -67,7 +67,6 @@ export interface SimulateSummary {
   processed: number;
   skipped: number;
   rendered: number;
-  costUsd: number;
   /** True when a single chromium was launched and shared across the batch. */
   sharedBrowser: boolean;
 }
@@ -90,7 +89,7 @@ export async function runSimulate(
   const targets = await selectPicks(picks, opts, persist);
   if (targets.length === 0) {
     out(describeNothingToDo(opts));
-    return { results: [], processed: 0, skipped: 0, rendered: 0, costUsd: 0, sharedBrowser: false };
+    return { results: [], processed: 0, skipped: 0, rendered: 0, sharedBrowser: false };
   }
 
   const wantsRender = opts.render !== false;
@@ -127,7 +126,6 @@ export async function runSimulate(
     processed: results.filter((result) => !result.skipped).length,
     skipped: results.filter((result) => result.skipped).length,
     rendered: results.filter((result) => result.outputPath !== null).length,
-    costUsd: results.reduce((sum, result) => sum + (result.costUsd ?? 0), 0),
     sharedBrowser: browser !== undefined,
   };
 
@@ -135,7 +133,7 @@ export async function runSimulate(
     out('');
     out(
       `Done: ${summary.processed} processed, ${summary.skipped} already had a Reaction, ` +
-        `${summary.rendered} rendered${summary.costUsd > 0 ? `, $${summary.costUsd.toFixed(4)}` : ''}`,
+        `${summary.rendered} rendered`,
     );
   }
   return summary;
@@ -200,7 +198,6 @@ function describeResult(result: ProcessPickResult): string[] {
   }
 
   if (result.reaction) lines.push(...formatDialogue(result.reaction));
-  if (result.costUsd !== undefined) lines.push(`  cost: $${result.costUsd.toFixed(4)}`);
   lines.push(result.outputPath ? `  rendered: ${result.outputPath}` : '  not rendered (--no-render)');
   return lines;
 }

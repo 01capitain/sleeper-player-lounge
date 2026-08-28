@@ -46,7 +46,6 @@ function recorder(): {
         reaction: null,
         outputPath: '/tmp/out.png',
         skipped: false,
-        usage: [],
       });
     },
   };

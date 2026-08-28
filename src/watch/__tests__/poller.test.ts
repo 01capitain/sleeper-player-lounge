@@ -100,7 +100,6 @@ function collector(): { seen: Pick[]; process: (pick: Pick) => Promise<ProcessPi
         reaction: null,
         outputPath: null,
         skipped: false,
-        usage: [],
       });
     },
   };

@@ -3,8 +3,8 @@
  *
  * THIS COMMAND NEVER CALLS THE DIRECTOR. It reads a Reaction that is already in
  * `data/lounge/reactions.jsonl` and hands it to the renderer, so turning a PNG
- * into an MP4 costs nothing and cannot produce different dialogue than the
- * screenshot you already shared.
+ * into an MP4 is a pure renderer operation and cannot produce different
+ * dialogue than the screenshot you already shared.
  */
 import type { PlayerIndex } from '../../import/players.js';
 import type { PersistOptions } from '../../lounge/persist.js';

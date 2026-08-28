@@ -7,14 +7,14 @@
  *   hasProcessed? -> buildContext -> Director -> validate -> persist -> render
  *
  * IDEMPOTENCY IS A PRODUCT RULE (implementation_plan.md §14). The guard is the
- * first thing that happens, before a single token is spent, and a Pick that has
- * already been processed comes back as `skipped: true` carrying the Reaction
- * that is already on disk — never a second, different one.
+ * first thing that happens, before the Director is ever reached, and a Pick
+ * that has already been processed comes back as `skipped: true` carrying the
+ * Reaction that is already on disk — never a second, different one.
  *
  * Everything the pipeline touches is injectable, because the two things it
- * depends on that must never appear in a test are the `claude` binary (costs
- * money) and the network. Tests pass `director: new StubDirector()` and an
- * in-memory `players` index; nothing else is required.
+ * depends on that must never appear in a test are the `claude` binary and the
+ * network. Tests pass `director: new StubDirector()` and an in-memory `players`
+ * index; nothing else is required.
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -23,7 +23,7 @@ import path from 'node:path';
 import { loadConfig } from '../config.js';
 import type { BuildContextDeps, BuiltContext } from '../context/builder.js';
 import { buildContext } from '../context/builder.js';
-import { createClaudeCliDirector, StubDirector, type DirectorUsage } from '../director/index.js';
+import { createClaudeCliDirector, StubDirector } from '../director/index.js';
 import { loadAdp, enrichWithAdp } from '../import/adp.js';
 import { applyAlias, loadAliasMap } from '../import/alias.js';
 import type { PlayerIndex } from '../import/players.js';
@@ -57,7 +57,7 @@ import { validateReaction } from '../validate.js';
 export interface ProcessPickOptions {
   /**
    * The Director to use. Defaults to the real `claude -p` subprocess, so every
-   * test must pass one — `StubDirector` is free and deterministic.
+   * test must pass one — `StubDirector` is offline and deterministic.
    */
   director?: LoungeDirector;
   /** Shorthand for `director: new StubDirector()`. */
@@ -86,8 +86,8 @@ export interface ProcessPickOptions {
   renderOptions?: RenderOptions;
   /**
    * When a Pick was already processed, re-render its stored Reaction instead of
-   * doing nothing. Costs no money — the Director is never called. `demo` uses
-   * it so running it twice still ends with a picture.
+   * doing nothing. The Director is never called. `demo` uses it so running it
+   * twice still ends with a picture.
    */
   rerenderSkipped?: boolean;
 }
@@ -104,9 +104,6 @@ export interface ProcessPickResult {
   skipped: boolean;
   /** The Context that was handed to the Director, when one was built. */
   context?: BuiltContext;
-  /** Director cost in USD, when the real Director reported it. */
-  costUsd?: number;
-  usage: DirectorUsage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -122,9 +119,8 @@ export async function processPick(
   opts: ProcessPickOptions = {},
 ): Promise<ProcessPickResult> {
   const target = opts.alias === true ? await aliasPick(pick, opts) : pick;
-  const usage: DirectorUsage[] = [];
 
-  // --- the idempotency guard, before anything expensive ---------------------
+  // --- the idempotency guard, before anything else --------------------------
   if (await hasProcessed(target.eventId, opts.persist ?? {})) {
     const stored = await findReactionByEventId(target.eventId, opts.persist?.reactionsFile);
     log.info(`pick ${target.pickNo} (${target.playerName}) already processed — skipping`);
@@ -138,7 +134,6 @@ export async function processPick(
       reaction: stored,
       outputPath,
       skipped: true,
-      usage,
     };
   }
 
@@ -147,7 +142,7 @@ export async function processPick(
   const context = await buildContext(target, { players, ...opts.contextDeps });
 
   // --- director -------------------------------------------------------------
-  const director = await resolveDirector(opts, usage);
+  const director = await resolveDirector(opts);
   const generated = await director.generateReaction(context);
 
   // --- validate -------------------------------------------------------------
@@ -172,7 +167,6 @@ export async function processPick(
     outputPath = await renderReaction(reaction, { ...opts, players, context });
   }
 
-  const costUsd = totalCost(usage);
   return {
     eventId: target.eventId,
     pick: target,
@@ -180,31 +174,15 @@ export async function processPick(
     outputPath,
     skipped: false,
     context,
-    ...(costUsd !== undefined ? { costUsd } : {}),
-    usage,
   };
 }
 
-/** Sum of every `total_cost_usd` the Director reported, or undefined. */
-export function totalCost(usage: readonly DirectorUsage[]): number | undefined {
-  const costs = usage
-    .map((entry) => entry.totalCostUsd)
-    .filter((value): value is number => typeof value === 'number');
-  if (costs.length === 0) return undefined;
-  return costs.reduce((sum, value) => sum + value, 0);
-}
-
-async function resolveDirector(
-  opts: ProcessPickOptions,
-  usage: DirectorUsage[],
-): Promise<LoungeDirector> {
+async function resolveDirector(opts: ProcessPickOptions): Promise<LoungeDirector> {
   if (opts.director) return opts.director;
   if (opts.stub === true) return new StubDirector();
   // The Director sanitizes the schema for `--json-schema` itself; see
   // `structuredOutputSchema` in src/director/claude-cli.ts.
-  return createClaudeCliDirector({
-    onUsage: (entry) => usage.push(entry),
-  });
+  return createClaudeCliDirector();
 }
 
 async function aliasPick(pick: Pick, opts: ProcessPickOptions): Promise<Pick> {

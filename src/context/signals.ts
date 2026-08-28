@@ -29,8 +29,10 @@ export interface DraftSignalOptions {
   reachFraction?: number;
   /**
    * How many picks past his ADP a player must slide before he is disappointed.
-   * Players expect to go around their ADP; a fixed 8-pick line means the same
-   * thing everywhere on the board. Default 8.
+   * Players expect to go around their ADP; a fixed line means the same thing
+   * everywhere on the board. Default 16 — at 8 the signal fired on 43% of a
+   * 14-team draft's ranked picks, which made disappointment the default state
+   * rather than a moment worth reacting to. Default 16.
    */
   disappointmentPicks?: number;
 }
@@ -40,7 +42,7 @@ export const DEFAULT_SIGNAL_OPTIONS: Required<DraftSignalOptions> = {
   positionRunThreshold: 3,
   reachCapPicks: 24,
   reachFraction: 0.5,
-  disappointmentPicks: 8,
+  disappointmentPicks: 16,
 };
 
 /**

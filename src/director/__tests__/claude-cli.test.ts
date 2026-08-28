@@ -104,7 +104,6 @@ function envelope(structured: unknown, extra: Record<string, unknown> = {}): str
     subtype: 'success',
     is_error: false,
     duration_ms: 4210,
-    total_cost_usd: 0.0042,
     structured_output: structured,
     ...extra,
   });
@@ -133,10 +132,10 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// the cost guard
+// the isolation guard
 // ---------------------------------------------------------------------------
 
-describe('ADR 0001 flag set (the cost guard)', () => {
+describe('ADR 0001 flag set (the isolation guard)', () => {
   it('passes every required flag to the spawned CLI', async () => {
     const context = await makeContext();
     const spawn = fakeSpawn([envelope(validReaction(context))]);
@@ -149,7 +148,8 @@ describe('ADR 0001 flag set (the cost guard)', () => {
     for (const flag of REQUIRED_CLI_FLAGS) {
       expect(args).toContain(flag);
     }
-    // The values that actually strip the 15,269-token default system prompt.
+    // The values that actually close the box: no tools, no personal settings,
+    // and our own system prompt rather than the CLI's default one.
     expect(args?.[args.indexOf('--model') + 1]).toBe('sonnet');
     expect(args?.[args.indexOf('--tools') + 1]).toBe('');
     expect(args?.[args.indexOf('--output-format') + 1]).toBe('json');
@@ -186,20 +186,16 @@ describe('ADR 0001 flag set (the cost guard)', () => {
 // ---------------------------------------------------------------------------
 
 describe('the CLI JSON envelope', () => {
-  it('reads structured_output and surfaces cost and duration', async () => {
+  it('reads structured_output and surfaces the duration', async () => {
     const context = await makeContext();
-    const usage: unknown[] = [];
     const director = new ClaudeCliDirector({
       spawn: fakeSpawn([envelope(validReaction(context))]),
       failedEventsFile: path.join(dir, 'failed.jsonl'),
-      onUsage: (entry) => usage.push(entry),
     });
 
     const reaction = await director.generateReaction(context);
     expect(reaction.reactions).toHaveLength(2);
-    expect(usage).toEqual([
-      { eventId: context.pick.eventId, attempt: 1, model: 'sonnet', totalCostUsd: 0.0042, durationMs: 4210 },
-    ]);
+    expect(parseEnvelope(envelope(validReaction(context))).durationMs).toBe(4210);
   });
 
   it('falls back to a fenced JSON `result` when structured_output is absent', () => {

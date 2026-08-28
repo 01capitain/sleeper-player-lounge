@@ -278,7 +278,6 @@ export function directorEnvelope(structuredOutput: unknown): string {
     subtype: 'success',
     is_error: false,
     duration_ms: 4210,
-    total_cost_usd: 0.0042,
     structured_output: structuredOutput,
   });
 }

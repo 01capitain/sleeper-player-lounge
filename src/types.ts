@@ -277,7 +277,7 @@ export interface ReactionRulesConfig {
   allowNoOptionalStarReaction: boolean;
 }
 
-export type RenderFormat = 'png' | 'gif' | 'mp4';
+export type RenderFormat = 'png' | 'gif' | 'mp4' | 'html';
 
 export interface RenderingConfig {
   defaultFormat: RenderFormat;

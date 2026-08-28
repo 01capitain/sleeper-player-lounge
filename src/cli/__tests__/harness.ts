@@ -4,8 +4,8 @@
  * Two rules govern everything in here, and they are the reason the helpers
  * exist at all:
  *
- *  - **No test ever spawns the real `claude` binary.** It costs money. Every
- *    test injects `StubDirector`, which is deterministic and free.
+ *  - **No test ever spawns the real `claude` binary.** Every test injects
+ *    `StubDirector`, which is offline and deterministic.
  *  - **No test ever touches the network or the repo's real data files.** Each
  *    test gets a temp workspace, and `inertContextDeps()` hands `buildContext`
  *    a complete, empty world so it never reads `data/`.

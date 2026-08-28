@@ -12,14 +12,15 @@
  *  - **stdout is content.** Summaries, dialogue and file paths go to stdout;
  *    every diagnostic goes to stderr through `src/util/log.ts`. `lounge react
  *    --latest | tail -1` is therefore a usable way to get a path.
- *  - **`--stub` is always free.** Any command that would call the Director
- *    accepts `--stub`, which swaps in `StubDirector`: no subprocess, no cost,
- *    deterministic output.
+ *  - **`--stub` never invokes the Director.** Any command that would call the
+ *    Director accepts `--stub`, which swaps in `StubDirector`: no subprocess,
+ *    offline, deterministic output.
  */
 import { pathToFileURL } from 'node:url';
 
 import { Command, InvalidArgumentError, Option } from 'commander';
 
+import { FORMATS } from '../render/index.js';
 import type { RenderFormat } from '../types.js';
 import { log, setLogLevel } from '../util/log.js';
 import { runDemo, type DemoOptions } from './commands/demo.js';
@@ -46,7 +47,7 @@ export type {
 // Option parsers
 // ---------------------------------------------------------------------------
 
-const FORMATS: readonly RenderFormat[] = ['png', 'gif', 'mp4'];
+
 
 function parseIntOption(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -63,7 +64,7 @@ function formatOption(description = 'output format'): Option {
 
 /** `--stub`, worded the same way everywhere it appears. */
 function stubOption(): Option {
-  return new Option('--stub', 'use the deterministic StubDirector — free, no LLM call');
+  return new Option('--stub', 'run the pipeline without invoking the Director (deterministic, offline)');
 }
 
 /**
@@ -97,10 +98,11 @@ export function buildProgram(): Command {
         '  npm run demo                      set up if needed, generate one scene, open the image\n\n' +
         'Then:\n' +
         '  npm run lounge -- simulate --next      the next pick of the stored draft\n' +
-        '  npm run lounge -- react --latest --format mp4   re-render that scene as video (free)\n' +
+        '  npm run lounge -- react --latest --format mp4   re-render that scene as video\n' +
         '  npm run lounge -- watch                follow the live slow draft\n\n' +
-        'The Director shells out to `claude -p`; a pick costs roughly one to two cents.\n' +
-        'Add --stub anywhere to run the same pipeline with no LLM and no cost.',
+        'The Director shells out to `claude -p` and needs no API key — it reuses your\n' +
+        'existing Claude Code authentication. Add --stub anywhere to run the same\n' +
+        'pipeline without invoking the Director at all.',
     )
     .addOption(verboseOption())
     .showHelpAfterError();
@@ -120,7 +122,7 @@ export function buildProgram(): Command {
       'after',
       '\nExamples:\n' +
         '  npm run demo\n' +
-        '  npm run demo -- --stub --no-open      free, deterministic, no window opens\n' +
+        '  npm run demo -- --stub --no-open      deterministic, offline, no window opens\n' +
         '  npm run demo -- --pick 119 --format mp4\n',
     )
     .option('--pick <n>', 'demo one specific overall pick number', parseIntOption)

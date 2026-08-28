@@ -3,8 +3,8 @@
  *
  * The load-bearing property: re-rendering an existing Reaction must not call
  * the Director. Turning a PNG into an MP4 is a renderer operation, and if it
- * ever regenerated the scene it would both cost money and produce different
- * dialogue than the still you already shared.
+ * ever regenerated the scene it would produce different dialogue than the
+ * still you already shared.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -35,7 +35,7 @@ function fakeRender(): {
   };
 }
 
-/** Two stored Reactions, generated once with the free Director. */
+/** Two stored Reactions, generated once with the stub Director. */
 async function seeded(): Promise<Awaited<ReturnType<typeof workspace>>> {
   const ws = await workspace();
   for (const pick of [

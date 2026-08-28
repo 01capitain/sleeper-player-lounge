@@ -11,6 +11,7 @@ import path from 'node:path';
 import { loadConfig } from '../config.js';
 import { outputDir } from '../paths.js';
 import type { Reaction, RenderFormat } from '../types.js';
+import { renderHtml } from './html.js';
 import { renderPng, type RenderPngOptions } from './png.js';
 import { renderVideo, type RenderVideoOptions } from './video.js';
 
@@ -35,10 +36,16 @@ export async function render(reaction: Reaction, opts: RenderOptions = {}): Prom
   if (config) shared.config = config;
 
   if (format === 'png') return renderPng(reaction, outPath, shared);
+  if (format === 'html') return renderHtml(reaction, outPath, shared);
   return renderVideo(reaction, outPath, { ...shared, format });
 }
 
-const FORMATS: readonly RenderFormat[] = ['png', 'gif', 'mp4'];
+/**
+ * Every format `render()` can produce. The single source of truth — the CLI
+ * imports this rather than keeping its own copy, so a new format cannot be
+ * renderable but unselectable (or the reverse).
+ */
+export const FORMATS: readonly RenderFormat[] = ['png', 'gif', 'mp4', 'html'];
 
 function assertSupportedFormat(
   format: string,

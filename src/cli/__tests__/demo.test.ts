@@ -144,8 +144,6 @@ describe('runDemo', () => {
           },
           outputPath: '/tmp/demo.png',
           skipped: false,
-          costUsd: 0.0042,
-          usage: [],
         });
       },
     };
@@ -244,7 +242,7 @@ describe('runDemo', () => {
     expect(seen.calls[0]?.opts.open).toBe(false);
   });
 
-  it('prints why it chose the pick, the dialogue, the cost and the path', async () => {
+  it('prints why it chose the pick, the dialogue and the path', async () => {
     const ws = await workspace();
     await ws.writePicks(realisticDraft());
     const lines: string[] = [];
@@ -265,11 +263,10 @@ describe('runDemo', () => {
     expect(text).toContain('Kyle Pitts');
     expect(text).toContain('bust lore');
     expect(text).toContain('THE LOUNGE');
-    expect(text).toContain('$0.0042');
     expect(text).toContain('/tmp/demo.png');
   });
 
-  it('shows the stored Reaction again rather than paying twice', async () => {
+  it('shows the stored Reaction again rather than directing it twice', async () => {
     const ws = await workspace();
     const picks = realisticDraft();
     await ws.writePicks(picks);

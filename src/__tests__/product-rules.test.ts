@@ -24,7 +24,7 @@
  *   9  the pre-draft target league is never simulated
  *   10 the completed alternate 2026 draft can be replayed
  *   11 Regulars are ambient — relevance raises odds, it never gates
- *   12 the Director always runs behind the ADR 0001 cost guard
+ *   12 the Director always runs behind the ADR 0001 isolation guard
  *   13 ADP sentinels never leak, and `search_rank` is never an ADP fallback
  *
  * House rules for this suite:
@@ -1101,10 +1101,10 @@ describe('Rule 11 — Regulars are ambient: relevance raises their odds, it neve
 });
 
 // ===========================================================================
-// Rule 12 — the Director cost guard (ADR 0001)
+// Rule 12 — the Director isolation guard (ADR 0001)
 // ===========================================================================
 
-describe('Rule 12 — the Director always runs behind the ADR 0001 cost guard', () => {
+describe('Rule 12 — the Director always runs behind the ADR 0001 isolation guard', () => {
   const guardedFlags = [
     '--tools',
     '--setting-sources',
@@ -1118,7 +1118,7 @@ describe('Rule 12 — the Director always runs behind the ADR 0001 cost guard', 
     const pick = pickOf(RODGERS_PLAYER_ID);
     const context = await contextFor(pick);
     const spawn = fakeSpawn([directorEnvelope(reactionFor(pick, ['82 picks late', 'noted']))]);
-    const dir = await mkdtemp(path.join(tempRoot, 'costguard-'));
+    const dir = await mkdtemp(path.join(tempRoot, 'isolationguard-'));
     const director = new ClaudeCliDirector({
       spawn,
       model: 'sonnet',
@@ -1132,7 +1132,10 @@ describe('Rule 12 — the Director always runs behind the ADR 0001 cost guard', 
     const [argv] = await capture();
     expect(argv).toBeDefined();
     for (const flag of guardedFlags) {
-      expect(argv, `missing ${flag} — this multiplies cost by up to 15x`).toContain(flag);
+      expect(
+        argv,
+        `missing ${flag} — the Director would no longer be isolated from the operator's machine`,
+      ).toContain(flag);
     }
     for (const flag of REQUIRED_CLI_FLAGS) {
       expect(argv, `missing ${flag}`).toContain(flag);
@@ -1155,10 +1158,10 @@ describe('Rule 12 — the Director always runs behind the ADR 0001 cost guard', 
     }
   });
 
-  it('the cost guard is still in place on the retry attempt', async () => {
+  it('the isolation guard is still in place on the retry attempt', async () => {
     const pick = pickOf(RODGERS_PLAYER_ID);
     const context = await contextFor(pick);
-    const dir = await mkdtemp(path.join(tempRoot, 'costguard-retry-'));
+    const dir = await mkdtemp(path.join(tempRoot, 'isolationguard-retry-'));
     const spawn = fakeSpawn([
       directorEnvelope({ eventId: pick.eventId, reactions: [] }),
       directorEnvelope(reactionFor(pick, ['fine', 'ok'])),
@@ -1180,7 +1183,7 @@ describe('Rule 12 — the Director always runs behind the ADR 0001 cost guard', 
     const pick = pickOf(RODGERS_PLAYER_ID);
     const context = await contextFor(pick);
     const seen: { file: string; args: readonly string[] }[] = [];
-    const dir = await mkdtemp(path.join(tempRoot, 'costguard-argv-'));
+    const dir = await mkdtemp(path.join(tempRoot, 'isolationguard-argv-'));
     const director = new ClaudeCliDirector({
       cliPath: 'claude',
       failedEventsFile: path.join(dir, 'failed.jsonl'),

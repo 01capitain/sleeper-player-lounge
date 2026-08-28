@@ -32,8 +32,8 @@ function out(line = ''): void {
 }
 
 /**
- * Run the whole setup flow. Resilient by design: a missing target league costs
- * only the Manager Alias step, never the Simulation import.
+ * Run the whole setup flow. Resilient by design: a missing target league
+ * disables only the Manager Alias step, never the Simulation import.
  */
 export async function runSetup(opts: RunSetupOptions = {}): Promise<void> {
   const force = opts.force === true;

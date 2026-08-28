@@ -34,7 +34,7 @@ No API key is needed. Sleeper's read API is public, and the Director runs throug
 existing Claude Code authentication.
 
 ```bash
-npm run demo -- --stub --no-open    # free: no LLM call, no window
+npm run demo -- --stub --no-open    # no Director call, no window
 npm run demo -- --pick 229          # Aaron Rodgers, 82 picks past his ADP
 npm run demo -- --format mp4        # the animated version instead
 ```
@@ -64,7 +64,8 @@ npm run lounge -- simulate --all --limit 5       # batch; shares one chromium
 npm run lounge -- simulate --next --alias        # map draft slots onto hotelkit managers
 npm run lounge -- simulate --next --no-render    # generate and persist only
 
-npm run lounge -- react --latest --format mp4    # free — no Director call
+npm run lounge -- react --latest --format mp4
+npm run lounge -- react --latest --format html  # animates in a browser, one self-contained file    # never calls the Director
 npm run lounge -- react --pick 74 --format gif
 npm run lounge -- screenshot --latest
 
@@ -77,12 +78,12 @@ npm run lounge -- history import --target        # hotelkit Fantasies instead
 npm run lounge -- history import --league <id>
 ```
 
-### `--stub` costs nothing
+### `--stub`
 
-`demo`, `simulate` and `watch` all accept `--stub`, which swaps the `claude -p` Director for
-a deterministic canned one. Same pipeline, same renderer, same files on disk, no LLM call and
-no cost. It is how the test suite exercises the pipeline, and it is the right way to check a
-render change.
+`demo`, `simulate` and `watch` all accept `--stub`, which runs the pipeline without invoking
+the Director: the `claude -p` subprocess is swapped for a deterministic canned one. Same
+pipeline, same renderer, same files on disk, offline and repeatable. It is how the test suite
+exercises the pipeline, and it is the right way to check a render change.
 
 ### Watching a live draft
 
@@ -120,8 +121,21 @@ These are requirements, not preferences. They are enforced by the test suite.
 - Reprocessing the same pick never produces a duplicate reaction.
 - This is a fictional parody interface, not a replica of Sleeper's UI.
 
-## Cost
+## Output formats
 
-The Director shells out to `claude -p` with a deliberately minimal flag set — around
-**$0.004 per pick**, roughly $1 to replay a full 241-pick draft. See ADR 0001; dropping any
-of those flags silently multiplies the cost by up to 15x.
+Every format is produced from the same stored Reaction, so switching format
+never re-invokes the Director.
+
+| Format | What it is |
+|---|---|
+| `png` | The final chat state. Fastest, and the demo default. |
+| `mp4` | H.264 / yuv420p, 1080x1920. The preferred thing to share. |
+| `gif` | Downscaled to 540px for chat clients that prefer GIFs. |
+| `html` | One self-contained file that animates in a browser. |
+
+The `html` build plays the **same timeline the MP4 encoder uses**, so it is the
+quickest way to judge pacing before committing to an encode. CSS, JavaScript,
+the payload and the headshots are all inlined, so the file works from `file://`
+with no server and no network — you can move it, email it or drop it in a shared
+folder and it still plays. It has Replay and Show-final controls and scales to
+the window.

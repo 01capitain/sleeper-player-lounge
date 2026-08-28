@@ -25,11 +25,16 @@
   },
   "rendering": {
     "defaultFormat": "mp4",
-    "supportedFormats": ["png", "gif", "mp4"],
+    "supportedFormats": [
+      "png",
+      "gif",
+      "mp4",
+      "html"
+    ],
     "defaultAspectRatio": "9:16",
     "defaultDurationSeconds": 8,
     "showTypingIndicators": true,
     "fictionalInterfaceBranding": true,
-    "watermark": "Players Lounge • Fantasy parody"
+    "watermark": "Players Lounge \u2022 Fantasy parody"
   }
 }

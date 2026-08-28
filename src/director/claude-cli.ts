@@ -1,16 +1,16 @@
 /**
  * The Director: a `claude -p` subprocess (ADR 0001).
  *
- * COST IS LOAD-BEARING. The CLI's default system prompt measures 15,269 cached
- * input tokens per call. ADR 0001 fixes the isolation flag set that strips it:
- *
- *   $0.0644 with defaults, $0.0301 with `--system-prompt` alone,
- *   $0.0042 with the full set — roughly $1 for a 238-pick draft replay.
- *
- * Dropping any single flag silently multiplies cost by up to 15x, so
- * `REQUIRED_CLI_FLAGS` is asserted in tests against the argv a fake spawn sees.
- * `--bare` must never be added: it forces `ANTHROPIC_API_KEY` auth and defeats
- * the no-API-key property.
+ * ISOLATION IS LOAD-BEARING. ADR 0001 fixes a flag set that makes the Director
+ * a closed box: `--tools ""` denies it the filesystem and the network, and
+ * `--setting-sources ""`, `--disable-slash-commands` and `--strict-mcp-config`
+ * keep the operator's personal settings, skills, hooks and MCP servers out of
+ * the prompt. `--no-session-persistence` keeps draft runs out of session
+ * history. A Director whose dialogue depends on whose machine it ran on is not
+ * reproducible, so `REQUIRED_CLI_FLAGS` is asserted in tests against the argv a
+ * fake spawn sees. `--bare` must never be added: it forces `ANTHROPIC_API_KEY`
+ * auth and never reads OAuth or the keychain, which defeats the no-API-key
+ * property the whole design rests on.
  *
  * Schema enforcement at the model boundary is NOT validation. `--json-schema`
  * does not reliably enforce `maxItems: 6` or `maxLength: 280`, so every answer
@@ -54,7 +54,7 @@ export const DEFAULT_DIRECTOR_MODEL = 'sonnet';
 
 /**
  * Every flag ADR 0001 requires. Tests assert each of these appears in the argv
- * handed to the spawn function — this array is the cost guard.
+ * handed to the spawn function — this array is the isolation guard.
  */
 export const REQUIRED_CLI_FLAGS = [
   '-p',
@@ -85,9 +85,9 @@ export interface DirectorSpawnOptions {
 }
 
 /**
- * Injected so tests never touch the real binary — spawning `claude` costs money
- * and needs network. Always `execFile`-shaped: a program plus an argv array,
- * never a shell string.
+ * Injected so tests never touch the real binary — spawning `claude` needs the
+ * network and produces different dialogue every run. Always `execFile`-shaped:
+ * a program plus an argv array, never a shell string.
  */
 export type DirectorSpawn = (
   file: string,
@@ -151,15 +151,6 @@ export class DirectorFailureError extends Error {
   }
 }
 
-/** Cost and latency for one CLI call, surfaced for logging. */
-export interface DirectorUsage {
-  eventId: string;
-  attempt: number;
-  model: string;
-  totalCostUsd?: number;
-  durationMs?: number;
-}
-
 /** The failed-event record appended to `data/lounge/failed.jsonl`. */
 export interface FailedEventRecord {
   eventId: string;
@@ -191,7 +182,6 @@ export interface ClaudeCliDirectorOptions {
   maxBuffer?: number;
   rules?: Partial<ReactionRulesConfig>;
   now?: () => Date;
-  onUsage?: (usage: DirectorUsage) => void;
 }
 
 const DEFAULT_RULES: Pick<ReactionRulesConfig, 'minMessages' | 'maxMessages' | 'draftedPlayerMustReact'> =
@@ -212,7 +202,6 @@ export class ClaudeCliDirector implements LoungeDirector {
   private readonly maxBuffer: number;
   private readonly rules: Partial<ReactionRulesConfig>;
   private readonly now: () => Date;
-  private readonly onUsage: ((usage: DirectorUsage) => void) | undefined;
 
   constructor(options: ClaudeCliDirectorOptions = {}) {
     this.model = options.model ?? process.env['LOUNGE_DIRECTOR_MODEL']?.trim() ?? DEFAULT_DIRECTOR_MODEL;
@@ -225,7 +214,6 @@ export class ClaudeCliDirector implements LoungeDirector {
     this.maxBuffer = options.maxBuffer ?? 8 * 1024 * 1024;
     this.rules = options.rules ?? {};
     this.now = options.now ?? (() => new Date());
-    this.onUsage = options.onUsage;
   }
 
   /** The exact argv handed to `execFile`. Exposed so `--dry-run` can print it. */
@@ -280,17 +268,10 @@ export class ClaudeCliDirector implements LoungeDirector {
         });
         rawOutput = stdout;
         const envelope = parseEnvelope(stdout);
-        this.onUsage?.({
-          eventId: context.pick.eventId,
-          attempt,
-          model: this.model,
-          ...(envelope.totalCostUsd !== undefined ? { totalCostUsd: envelope.totalCostUsd } : {}),
-          ...(envelope.durationMs !== undefined ? { durationMs: envelope.durationMs } : {}),
-        });
         log.debug(
-          `director: ${context.pick.eventId} attempt ${attempt} cost=${
-            envelope.totalCostUsd ?? '?'
-          } duration=${envelope.durationMs ?? '?'}ms`,
+          `director: ${context.pick.eventId} attempt ${attempt} duration=${
+            envelope.durationMs ?? '?'
+          }ms`,
         );
 
         const candidate = repairEnvelopeShape(envelope.structuredOutput, context);
@@ -341,16 +322,15 @@ export function createClaudeCliDirector(
 
 export interface DirectorEnvelope {
   structuredOutput: unknown;
-  totalCostUsd?: number;
   durationMs?: number;
   isError?: boolean;
 }
 
 /**
  * Read `structured_output` out of the CLI's JSON envelope, surfacing
- * `total_cost_usd` and `duration_ms` for logging. Falls back to parsing the
- * `result` text as JSON, then to the whole payload, so an envelope shape change
- * degrades into the normal retry path rather than an unhandled crash.
+ * `duration_ms` for logging. Falls back to parsing the `result` text as JSON,
+ * then to the whole payload, so an envelope shape change degrades into the
+ * normal retry path rather than an unhandled crash.
  */
 export function parseEnvelope(stdout: string): DirectorEnvelope {
   const trimmed = stdout.trim();
@@ -369,9 +349,6 @@ export function parseEnvelope(stdout: string): DirectorEnvelope {
   const record = payload as Record<string, unknown>;
   const envelope: DirectorEnvelope = { structuredOutput: undefined };
 
-  if (typeof record['total_cost_usd'] === 'number') {
-    envelope.totalCostUsd = record['total_cost_usd'];
-  }
   if (typeof record['duration_ms'] === 'number') {
     envelope.durationMs = record['duration_ms'];
   }

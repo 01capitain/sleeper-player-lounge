@@ -8,6 +8,8 @@
 import type { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
 
+import { FORMATS } from '../../render/index.js';
+
 import { buildProgram } from '../index.js';
 
 function command(name: string): Command {
@@ -83,9 +85,12 @@ describe('command surface', () => {
     expect(flags(buildProgram())).toContain('--verbose');
   });
 
-  it('restricts --format to the three renderable formats', () => {
+  it('offers exactly the formats the renderer can produce', () => {
+    // The CLI imports FORMATS from the render layer rather than keeping its own
+    // copy, so a format can never be renderable but unselectable, or the reverse.
     const format = command('react').options.find((option) => option.long === '--format');
-    expect(format?.argChoices).toEqual(['png', 'gif', 'mp4']);
+    expect(format?.argChoices).toEqual([...FORMATS]);
+    expect(format?.argChoices).toContain('html');
   });
 
   it('leads the help text with the command a first-time reader should run', () => {
