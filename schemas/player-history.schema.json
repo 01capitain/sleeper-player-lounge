@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Player Fantasy Memory",
+  "type": "object",
+  "required": ["playerId", "lastSeason", "championships"],
+  "properties": {
+    "playerId": {"type": "string"},
+    "lastSeason": {
+      "type": ["object", "null"],
+      "properties": {
+        "season": {"const": 2025},
+        "managerId": {"type": "string"},
+        "managerName": {"type": "string"},
+        "performance": {"enum": ["excellent", "good", "neutral", "disappointing", "disaster"]},
+        "teamFinish": {"type": ["integer", "null"]},
+        "champion": {"type": "boolean"},
+        "sharedRosterPlayerIds": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "championships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["season", "managerId", "managerName"],
+        "properties": {
+          "season": {"type": "integer"},
+          "managerId": {"type": "string"},
+          "managerName": {"type": "string"},
+          "sharedChampionPlayerIds": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

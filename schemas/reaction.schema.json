@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Players Lounge Reaction",
+  "type": "object",
+  "required": ["eventId", "pick", "reactions"],
+  "properties": {
+    "eventId": {"type": "string"},
+    "pick": {
+      "type": "object",
+      "required": ["season", "pickNo", "playerId", "playerName", "managerName"],
+      "properties": {
+        "season": {"type": "integer"},
+        "pickNo": {"type": "integer"},
+        "round": {"type": ["integer", "null"]},
+        "playerId": {"type": "string"},
+        "playerName": {"type": "string"},
+        "managerName": {"type": "string"}
+      }
+    },
+    "reactions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["speakerPlayerId", "speakerName", "text", "delayMs", "reason"],
+        "properties": {
+          "speakerPlayerId": {"type": "string"},
+          "speakerName": {"type": "string"},
+          "text": {"type": "string", "maxLength": 280},
+          "delayMs": {"type": "integer", "minimum": 0, "maximum": 7000},
+          "reason": {
+            "enum": ["drafted_player", "nfl_teammate", "star_regular", "position_rival", "fantasy_2025_history", "championship_history", "running_joke", "stack", "reach", "fall", "other"]
+          },
+          "historyRefs": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

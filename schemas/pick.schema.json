@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Normalized Sleeper Draft Pick",
+  "type": "object",
+  "required": ["eventId", "season", "leagueId", "draftId", "pickNo", "playerId", "playerName", "managerId", "managerName"],
+  "properties": {
+    "eventId": {"type": "string"},
+    "season": {"type": "integer"},
+    "leagueId": {"type": "string"},
+    "draftId": {"type": "string"},
+    "pickNo": {"type": "integer"},
+    "round": {"type": ["integer", "null"]},
+    "draftSlot": {"type": ["integer", "null"]},
+    "playerId": {"type": "string"},
+    "playerName": {"type": "string"},
+    "position": {"type": ["string", "null"]},
+    "nflTeam": {"type": ["string", "null"]},
+    "managerId": {"type": "string"},
+    "managerName": {"type": "string"},
+    "pickedAt": {"type": ["string", "null"]}
+  }
+}

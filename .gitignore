@@ -1,0 +1,10 @@
+.DS_Store
+.env
+*.gif
+*.mp4
+data/cache/
+node_modules/
+output/
+players-lounge-handoff.zip
+playwright-report/
+test-results/

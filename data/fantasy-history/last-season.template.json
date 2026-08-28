@@ -1,0 +1,21 @@
+{
+  "season": 2025,
+  "sourceLeagueId": null,
+  "generatedAt": null,
+  "players": {},
+  "rules": {
+    "explicitSeasonMentionRequired": true,
+    "examples": {
+      "good": [
+        "Stephan had me in 2025 too. I owe him a better season.",
+        "We were on the same fantasy roster in 2025."
+      ],
+      "bad": [
+        "Back with Stephan again.",
+        "We did this last year."
+      ]
+    },
+    "performanceLabels": ["excellent", "good", "neutral", "disappointing", "disaster"],
+    "disappointingPlayerBehavior": "A player who disappointed his 2025 manager may acknowledge it and hope this season goes better. Teammates may lightly tease him about it."
+  }
+}

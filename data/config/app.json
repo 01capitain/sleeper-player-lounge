@@ -1,0 +1,35 @@
+{
+  "appName": "Players Lounge",
+  "season": 2026,
+  "sleeper": {
+    "username": "01capitain",
+    "userId": "471439689564286976",
+    "targetLeagueName": "hotelkit Fantasies",
+    "targetLeagueStatus": "pre_draft",
+    "simulationStrategy": "auto_select_completed_2026_draft"
+  },
+  "historyRules": {
+    "lastSeason": 2025,
+    "ignoreRosterHistoryBefore": 2025,
+    "preserveChampionshipRostersAllYears": true,
+    "explicitSeasonMentionRequired": true
+  },
+  "reactionRules": {
+    "draftedPlayerMustReact": true,
+    "includeRelevantCurrentTeammates": true,
+    "minMessages": 2,
+    "targetMessages": 4,
+    "maxMessages": 6,
+    "maxRegularsPerReaction": 3,
+    "allowNoOptionalStarReaction": true
+  },
+  "rendering": {
+    "defaultFormat": "mp4",
+    "supportedFormats": ["png", "gif", "mp4"],
+    "defaultAspectRatio": "9:16",
+    "defaultDurationSeconds": 8,
+    "showTypingIndicators": true,
+    "fictionalInterfaceBranding": true,
+    "watermark": "Players Lounge • Fantasy parody"
+  }
+}

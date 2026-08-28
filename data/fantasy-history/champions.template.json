@@ -1,0 +1,10 @@
+{
+  "generatedAt": null,
+  "championshipRosters": {},
+  "rules": {
+    "preserveAllAvailableSeasons": true,
+    "onlyLongTermRosterMemory": "championship_membership",
+    "explicitSeasonMentionRequired": true,
+    "description": "Roster history before 2025 is otherwise irrelevant. A player may remember any older season only if he was on that season's winning fantasy roster."
+  }
+}

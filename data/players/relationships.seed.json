@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "relationships": [
+    {
+      "players": ["travis_kelce", "patrick_mahomes"],
+      "types": ["nfl_teammates", "lounge_banter"],
+      "affinity": 0.9,
+      "banter": 0.75,
+      "topics": ["Chiefs", "stacks", "tight ends", "quarterbacks"]
+    },
+    {
+      "players": ["justin_jefferson", "jamarr_chase"],
+      "types": ["position_rivals"],
+      "affinity": 0.2,
+      "banter": 0.95,
+      "topics": ["WR rankings", "draft order", "who was selected first"]
+    },
+    {
+      "players": ["kyle_pitts", "travis_kelce"],
+      "types": ["position_rivals", "lounge_banter"],
+      "affinity": 0.2,
+      "banter": 0.85,
+      "topics": ["TE value", "draft reaches", "expectations"]
+    },
+    {
+      "players": ["kyle_pitts", "brock_bowers"],
+      "types": ["position_rivals", "lounge_banter"],
+      "affinity": 0.15,
+      "banter": 0.8,
+      "topics": ["TE rankings", "hype", "draft value"]
+    },
+    {
+      "players": ["kyle_pitts", "bijan_robinson"],
+      "types": ["nfl_teammates", "lounge_banter"],
+      "affinity": 0.65,
+      "banter": 0.65,
+      "topics": ["Falcons", "fantasy expectations", "Kyle Pitts league lore"]
+    }
+  ],
+  "note": "Runtime may enrich NFL teammate relationships from current Sleeper player metadata. Fantasy relationships are derived separately from league history."
+}
