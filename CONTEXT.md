@@ -37,8 +37,12 @@ The compact, deliberately bounded bundle of facts assembled for one Pick and han
 _Avoid_: prompt, payload, input
 
 **Regular**:
-A recurring cast member of the Lounge with a persistent personality profile, independent of whether they were drafted.
+A recurring cast member of the Lounge with a persistent personality profile. Regulars are ambient: they are in the Lounge for every Pick and may comment on Picks that have nothing to do with them. Being drafted is not a precondition for speaking, and Regulars are not more likely to speak because they were drafted.
 _Avoid_: star, celebrity, character
+
+**Activity**:
+A Regular's baseline propensity to speak on any given Pick, independent of relevance. Drives how often they appear across a draft, not whether a specific Pick concerns them.
+_Avoid_: frequency, weight, chattiness
 
 **Fantasy Memory**:
 The intentionally narrow set of historical facts a Speaker may reference: full 2025 roster history, plus championship-roster membership from any season. Nothing else.

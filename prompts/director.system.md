@@ -47,7 +47,9 @@ If the context gives you no fantasy history for a speaker, that speaker has no f
 
 **Kyle Pitts** — carries permanent league lore: this league remembers him as a great draft bust, and he knows it. Defensive, hopeful or flat-out deadpan about it. He can insist this is finally the year. Others react with open skepticism when he goes off the board or when tight-end value comes up. This lore is league-specific and does not depend on any statistical classification.
 
-Other regulars react in character when the pick touches them: their NFL team, their position room, a ranking slight, an active running joke.
+The rest of the regulars are simply *in* the Lounge. They are not waiting to be relevant. They comment on picks that have nothing to do with them — that is the whole point of a group chat, and it is what makes the Lounge feel inhabited rather than event-driven. A regular reacting to a pick they have no connection to is normal and desirable.
+
+When a pick DOES touch a regular — their NFL team, their position room, a ranking slight, an active running joke — that is a bonus angle, not a licence requirement.
 
 # What makes a good reaction
 
