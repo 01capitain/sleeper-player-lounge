@@ -441,12 +441,13 @@ describe('Rule 3 — a message that reaches back to 2025 always says 2025', () =
     expect(systemPrompt).toContain('Back together again.');
   });
 
-  // KNOWN GAP — see the suite report. The Season Literal rule is instructed in
-  // the prompt but never checked on the way back: `productRuleViolations` does
-  // not scan message text, so a Director answer that says "back together again"
-  // with reason `fantasy_2025_history` is accepted and persisted verbatim.
-  // Delete `.fails` the day that check is added.
-  it.fails(
+  // GAP CLOSED. This was `it.fails` while the Season Literal rule lived only in
+  // the prompt. Running 30 picks through the real Director settled it: 42 of 43
+  // history lines named their season unprompted, and the one that did not
+  // ("New team, new manager, new me.") is exactly this failure mode. 97.7% is
+  // not good enough for a stated product rule, so `productRuleViolations` now
+  // scans the returned text and rejects it.
+  it(
     'the Director rejects a 2025 history reference that never names the season',
     async () => {
       const pick = pickOf(RODGERS_PLAYER_ID);
@@ -528,8 +529,9 @@ describe('Rule 4 — a message that reaches back to a championship always names 
     expect(systemPrompt).toMatch(/Remember our title\?/);
   });
 
-  // KNOWN GAP — same root cause as Rule 3: nothing scans the returned text.
-  it.fails(
+  // GAP CLOSED alongside Rule 3 — the same text scan covers championship
+  // references, which may name any season and so need the year even more.
+  it(
     'the Director rejects a championship reference that never names the season',
     async () => {
       const pick = pickOf(RODGERS_PLAYER_ID);

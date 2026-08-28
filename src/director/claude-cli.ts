@@ -49,8 +49,16 @@ export const directorSystemPromptFile = path.join(repoRoot, 'prompts', 'director
 /** Where a Reaction that failed validation twice is recorded. */
 export const failedEventsFile = path.join(loungeDir, 'failed.jsonl');
 
-/** The default model. Overridable via config / `LOUNGE_DIRECTOR_MODEL`. */
-export const DEFAULT_DIRECTOR_MODEL = 'sonnet';
+/**
+ * The default model. Overridable via config / `LOUNGE_DIRECTOR_MODEL`.
+ *
+ * Dialogue quality is the whole product here, so the Director gets the strongest
+ * model. Measured on the same cast: haiku averaged 60 characters a line against
+ * sonnet's 85, leaned on the same "Manager knows what he's doing" construction in
+ * 4 of 17 lines, and dropped the recurring personas almost entirely — Kelce's
+ * Taylor references disappeared. It was also no faster in practice.
+ */
+export const DEFAULT_DIRECTOR_MODEL = 'opus';
 
 /**
  * Every flag ADR 0001 requires. Tests assert each of these appears in the argv
@@ -454,6 +462,20 @@ export function productRuleViolations(
       violations.push(
         `"${message.speakerName}" (${message.speakerPlayerId}) is not present in the context and may not speak`,
       );
+      continue;
+    }
+
+    // The id and the name must describe the SAME player. Accepting "known id OR
+    // known name" let the Director pair one player's name with another's id —
+    // observed in the wild as `speakerName: "Justin Jefferson"` carrying Travis
+    // Kelce's id 1466. Everything downstream keys on the id, so the scene then
+    // renders Kelce's headshot and KC/TE chip above Jefferson's name.
+    const expected = allowed.nameById.get(message.speakerPlayerId);
+    if (expected !== undefined && expected !== normalize(message.speakerName)) {
+      violations.push(
+        `"${message.speakerName}" was given the player id ${message.speakerPlayerId}, ` +
+          `which belongs to a different player in this Context — ids and names must match`,
+      );
     }
   }
 
@@ -492,12 +514,16 @@ const SEASON_LITERAL = /\b(?:19|20)\d{2}\b/;
 export function allowedSpeakers(context: LoungeContext): {
   ids: Set<string>;
   names: Set<string>;
+  /** playerId -> the name the Context knows him by, for pair consistency. */
+  nameById: Map<string, string>;
 } {
   const ids = new Set<string>();
   const names = new Set<string>();
+  const nameById = new Map<string, string>();
   const add = (id: string | undefined, name: string | undefined): void => {
     if (id) ids.add(id);
     if (name) names.add(normalize(name));
+    if (id && name && !nameById.has(id)) nameById.set(id, normalize(name));
   };
 
   add(context.pick.playerId, context.pick.playerName);
@@ -506,7 +532,7 @@ export function allowedSpeakers(context: LoungeContext): {
   for (const playerId of Object.keys(context.speakerHistories ?? {})) add(playerId, undefined);
   for (const actor of actorsOf(context)) add(actor.playerId, actor.name);
 
-  return { ids, names };
+  return { ids, names, nameById };
 }
 
 function actorsOf(context: LoungeContext): { playerId: string; name: string }[] {

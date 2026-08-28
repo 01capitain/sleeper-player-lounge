@@ -34,9 +34,16 @@
   --fs-name:       31px;
   --fs-body:       36px;   /* never below 30px — must survive downscaling */
   --fs-chip:       23px;
-  --fs-eyebrow:    26px;
-  --fs-card:       42px;
+  --fs-eyebrow:    24px;
+  --fs-card:       32px;   /* announcement "selected by" credit */
   --fs-mark:       25px;
+
+  /* the announcement hero. --fs-hero is the ceiling: render.js shrinks the
+     surname line from here down to --fs-hero-min so a long one still fits. */
+  --fs-hero:      116px;
+  --fs-hero-min:   40px;
+  --fs-given:      34px;
+  --fs-given-min:  22px;
 
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, "Noto Sans", sans-serif;
@@ -79,6 +86,7 @@ html, body {
    ========================================================================== */
 
 .lounge-header {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -88,6 +96,18 @@ html, body {
   border-bottom: 1px solid var(--hairline);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
   z-index: 3;
+}
+
+/* Softens the hard edge where the scrolled thread runs under the header. */
+.lounge-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 72px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(18, 16, 26, 0.92), rgba(18, 16, 26, 0));
 }
 
 .lounge-badge {
@@ -191,6 +211,58 @@ html, body {
 #previous:empty,
 #reactions:empty,
 #status:empty { display: none; }
+
+/* --- density fit ---------------------------------------------------------
+   A long thread must never push the announcement off the top of the canvas:
+   the announcement is the point of the export, the chat is the context. When
+   render.js measures an overflow it tightens the *chat* one or two steps and
+   leaves the announcement at full size. Nothing here fires on a thread that
+   already fits, and --fs-body never drops below the 30px downscale floor.
+   Every selector is scoped under #scroll and to .row, so the announcement's
+   own avatar and metrics are untouched. */
+
+#scroll.is-tight { --fs-body: 34px; }
+#scroll.is-tight .thread { gap: 24px; padding-bottom: 194px; }
+#scroll.is-tight #previous,
+#scroll.is-tight #reactions { gap: 24px; }
+#scroll.is-tight .bubble { padding: 20px 28px 22px; }
+#scroll.is-tight .row-meta { margin-bottom: 6px; }
+#scroll.is-tight .status-card { margin: 2px 0 0; }
+
+#scroll.is-tighter { --fs-body: 32px; }
+#scroll.is-tighter .thread { gap: 16px; padding-bottom: 180px; }
+#scroll.is-tighter #previous,
+#scroll.is-tighter #reactions { gap: 16px; }
+#scroll.is-tighter .bubble { padding: 14px 26px 16px; }
+#scroll.is-tighter .row { gap: 18px; }
+#scroll.is-tighter .row-meta { margin-bottom: 4px; }
+#scroll.is-tighter .row .avatar { width: 84px; height: 84px; }
+#scroll.is-tighter .row .avatar .mono { font-size: 32px; }
+
+/* Last resort. The chat hits the 30px downscale floor, and only here does
+   the announcement itself give ground — a step smaller, never dropped. */
+#scroll.is-tightest { --fs-body: 30px; }
+#scroll.is-tightest .thread { gap: 11px; padding-bottom: 168px; }
+#scroll.is-tightest #previous,
+#scroll.is-tightest #reactions { gap: 11px; }
+#scroll.is-tightest .bubble { padding: 10px 22px 12px; }
+#scroll.is-tightest .row { gap: 16px; }
+#scroll.is-tightest .row-meta { margin-bottom: 4px; }
+#scroll.is-tightest .row .avatar { width: 76px; height: 76px; }
+#scroll.is-tightest .row .avatar .mono { font-size: 29px; }
+#scroll.is-tightest .status-card {
+  --fs-hero: 82px;
+  --fs-given: 27px;
+  --beam-x: 134px;
+  padding: 24px 36px;
+  gap: 28px;
+}
+#scroll.is-tightest .announce-hero { margin-top: 16px; }
+#scroll.is-tightest .status-rule { margin-top: 18px; }
+#scroll.is-tightest .status-line { margin-top: 15px; font-size: 29px; }
+#scroll.is-tightest .announce-portrait { width: 196px; height: 196px; }
+#scroll.is-tightest .announce-portrait .avatar .mono { font-size: 70px; }
+#scroll.is-tightest .announce-team { font-size: 19px; padding: 6px 14px 7px; }
 
 /* ==========================================================================
    Message row
@@ -330,52 +402,492 @@ html, body {
 }
 
 /* ==========================================================================
-   Draft status card — deliberately NOT a chat bubble
+   Draft announcement — the centrepiece
+   --------------------------------------------------------------------------
+   Not a chat bubble and not a system notice: a stage. A cone of light falls
+   from above onto the drafted player's portrait, his name sits in lights as
+   the largest thing on the canvas, and the manager is the credit underneath.
+
+   Structure (built by buildStatusCard() in render.js, the single source):
+
+     .status-card.announce[data-team]      the lit plate
+       .announce-stage                     light only, no text
+         .announce-beam                      spotlight cone onto the portrait
+         .announce-pool                      pool of light at its base
+         .announce-sweep                     one-shot gleam, entrance only
+       .announce-copy
+         .status-eyebrow                     kicker: DRAFT UPDATE · ROUND · PICK
+         .announce-hero
+           .announce-given                     first name, letterspaced
+           .announce-family                    HERO — surname in lights
+         .status-rule                        team-lit underline
+         .status-line                        "selected by <manager>" credit
+       .announce-portrait
+         .avatar                             headshot, or the monogram plate
+
+   Every accent is driven by --team-1 / --team-2. Those are declared right
+   here with the amber house accent as their value, so a team we have no
+   colour for — or no chip at all — simply keeps the house look. The
+   [data-team=".."] rules below only ever override, never introduce.
    ========================================================================== */
 
 .status-card {
-  align-self: center;
-  max-width: 900px;
-  margin: 12px 0 6px;
-  padding: 30px 46px 34px;
-  text-align: center;
-  border-radius: 26px;
+  /* House accent. Overridden per team below; unknown teams keep these. */
+  --team-1: var(--accent);
+  --team-2: #ff8f4d;
+  /* horizontal centre of the portrait, measured from the card's right edge:
+     padding-right + half the plate. The light is aimed at it. */
+  --beam-x: 176px;
+
+  position: relative;
+  width: 100%;
+  max-width: 992px;
+  margin: 10px 0 4px;
+  padding: 38px 44px;
+  display: flex;
+  align-items: center;
+  gap: 38px;
+  text-align: left;
+  border-radius: 34px;
+  overflow: hidden;
+  isolation: isolate;
   background:
-    linear-gradient(180deg, rgba(255, 182, 72, 0.09), rgba(255, 182, 72, 0.02)),
-    var(--card);
-  border: 1px solid var(--card-edge);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+    radial-gradient(120% 150% at 78% -30%,
+      color-mix(in srgb, var(--team-1) 15%, transparent), transparent 62%),
+    radial-gradient(90% 120% at 4% 118%, rgba(0, 0, 0, 0.5), transparent 60%),
+    linear-gradient(122deg,
+      color-mix(in srgb, var(--team-2) 15%, #1a1426) 0%,
+      #181222 56%,
+      #120e1c 100%);
+  border: 1px solid color-mix(in srgb, var(--team-1) 30%, transparent);
+  box-shadow:
+    0 44px 96px -34px color-mix(in srgb, var(--team-1) 42%, transparent),
+    0 26px 62px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* --- the light ---------------------------------------------------------- */
+
+.announce-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+/* A cone falling from above onto the portrait. `right` is the portrait's
+   centre: card padding (44) + half the 264px plate. */
+.announce-beam {
+  position: absolute;
+  top: -330px;
+  right: var(--beam-x);
+  width: 760px;
+  height: 820px;
+  transform: translateX(50%);
+  clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--team-1) 30%, transparent) 0%,
+    color-mix(in srgb, var(--team-1) 10%, transparent) 46%,
+    transparent 80%);
+  filter: blur(72px);
+  opacity: 0.72;
+}
+
+.announce-pool {
+  position: absolute;
+  right: var(--beam-x);
+  bottom: -74px;
+  width: 470px;
+  height: 200px;
+  transform: translateX(50%);
+  background: radial-gradient(50% 50% at 50% 50%,
+    color-mix(in srgb, var(--team-1) 50%, transparent),
+    transparent 68%);
+  filter: blur(20px);
+  opacity: 0.45;
+}
+
+/* One gleam across the plate as it lands. Settled state is invisible, so a
+   frozen frame — and the still PNG — never catches it mid-pass. */
+.announce-sweep {
+  position: absolute;
+  inset: -30% -50%;
+  background: linear-gradient(102deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 58%);
+  opacity: 0;
+}
+
+/* --- the copy ----------------------------------------------------------- */
+
+.announce-copy {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .status-eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 15px;
   font-family: var(--mono);
   font-size: var(--fs-eyebrow);
   font-weight: 600;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--team-1);
   overflow-wrap: anywhere;
+}
+
+.announce-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 13px 7px;
+  border-radius: 9px;
+  font-size: 19px;
+  letter-spacing: 0.16em;
+  color: var(--team-1);
+  background: color-mix(in srgb, var(--team-1) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-1) 32%, transparent);
+  white-space: nowrap;
+}
+
+.announce-flag::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--team-1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--team-1) 85%, transparent);
+}
+
+.announce-coords {
+  font-size: 22px;
+  letter-spacing: 0.2em;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+/* --- the name ----------------------------------------------------------- */
+
+.announce-hero {
+  margin-top: 22px;
+  min-width: 0;
+}
+
+.announce-given,
+.announce-family {
+  display: block;
+  min-width: 0;
+  /* the JS fitter measures scrollWidth against this box */
+  overflow: hidden;
+}
+
+.announce-given {
+  font-size: var(--fs-given);
+  font-weight: 650;
+  letter-spacing: 0.3em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+}
+
+.announce-family {
+  margin-top: 4px;
+  font-size: var(--fs-hero);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 0.96;
+  text-transform: uppercase;
+  color: #fff;
+  overflow-wrap: anywhere;
+  text-shadow:
+    0 0 52px color-mix(in srgb, var(--team-1) 45%, transparent),
+    0 0 14px rgba(255, 255, 255, 0.16),
+    0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+.status-rule {
+  width: 138px;
+  height: 4px;
+  margin: 24px 0 0;
+  border-radius: 3px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--team-1), color-mix(in srgb, var(--team-2) 55%, transparent));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--team-1) 55%, transparent);
 }
 
 .status-line {
-  margin-top: 14px;
+  margin-top: 20px;
   font-size: var(--fs-card);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.24;
-  color: var(--text);
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  line-height: 1.26;
+  color: var(--text-soft);
   overflow-wrap: anywhere;
 }
 
-.status-line .picked { color: var(--accent); }
-
-.status-rule {
-  width: 88px;
-  height: 3px;
-  margin: 22px auto 0;
-  border-radius: 2px;
-  background: linear-gradient(90deg, transparent, var(--card-edge), transparent);
+.announce-credit {
+  font-family: var(--mono);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-right: 14px;
+  white-space: nowrap;
 }
+
+.status-line .picked {
+  color: #fff;
+  font-weight: 750;
+}
+
+/* --- the portrait ------------------------------------------------------- */
+
+.announce-portrait {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 264px;
+  height: 264px;
+  border-radius: 50%;
+}
+
+/* rim light — a lit edge rather than a flat ring */
+.announce-portrait::before {
+  content: "";
+  position: absolute;
+  inset: -13px;
+  border-radius: 50%;
+  background: conic-gradient(from 208deg,
+    color-mix(in srgb, var(--team-1) 78%, transparent),
+    transparent 34%,
+    transparent 60%,
+    color-mix(in srgb, var(--team-2) 62%, transparent));
+  filter: blur(11px);
+  opacity: 0.9;
+}
+
+.announce-portrait .avatar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 255, 255, 0.15),
+    0 22px 46px rgba(0, 0, 0, 0.5);
+}
+
+/* Team-lit plate behind the (transparent cutout) headshot. Without a chip
+   this rule never matches and the deterministic hue plate is kept. */
+.status-card[data-team] .announce-portrait .avatar {
+  background: linear-gradient(158deg,
+    color-mix(in srgb, var(--team-2) 74%, #100c18),
+    color-mix(in srgb, var(--team-1) 34%, #100c18) 96%);
+}
+
+.announce-portrait .avatar .mono {
+  font-size: 94px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* Sheen across the plate, so a monogram-only portrait still reads as lit
+   rather than as a flat disc. */
+.announce-portrait .avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 32% 16%, rgba(255, 255, 255, 0.22), transparent 62%),
+    radial-gradient(90% 70% at 60% 108%, rgba(0, 0, 0, 0.42), transparent 60%);
+}
+
+/* Team/position nameplate seated on the base of the portrait. Only built
+   when the payload actually carried a chip. */
+.announce-team {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 8px 18px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #14101c;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--team-1) 96%, #fff),
+    var(--team-1));
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.45),
+    0 0 26px color-mix(in srgb, var(--team-1) 45%, transparent);
+}
+
+.announce-portrait .avatar .shot {
+  object-position: 50% 6%;
+  transform: scale(1.1) translateY(3%);
+}
+
+/* ==========================================================================
+   Announcement entrance — reset() only, and settled by 680ms
+   --------------------------------------------------------------------------
+   render() (the still PNG path) never adds .is-arriving, so the card is
+   painted settled on the first frame. reset() adds it, and every keyframe
+   set uses `both` fill with the settled rule as its `to`, so the animation
+   can be fast-forwarded — which is exactly what Playwright does when it
+   screenshots with animations disabled — without changing the result.
+
+   Longest chain: credit line, 420ms delay + 260ms = 680ms, inside the 700ms
+   status pause the video timeline allows before the first bubble.
+   ========================================================================== */
+
+@keyframes announce-plate {
+  from { opacity: 0; transform: translateY(26px) scale(0.965); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes announce-rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes announce-name {
+  from { opacity: 0; transform: translateY(30px) scale(0.94); letter-spacing: 0.05em; }
+  to   { opacity: 1; transform: none; letter-spacing: -0.02em; }
+}
+
+@keyframes announce-lights-up {
+  from { opacity: 0; transform: translateX(50%) scaleY(0.35); }
+  to   { opacity: 0.72; transform: translateX(50%) scaleY(1); }
+}
+
+@keyframes announce-pool-up {
+  from { opacity: 0; transform: translateX(50%) scale(0.5); }
+  to   { opacity: 0.45; transform: translateX(50%) scale(1); }
+}
+
+@keyframes announce-turn {
+  from { opacity: 0; transform: translateX(44px) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes announce-underline {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* keeps the -50% centring the settled rule depends on */
+@keyframes announce-nameplate {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(0.88); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+
+@keyframes announce-gleam {
+  0%   { opacity: 0; transform: translateX(-34%); }
+  38%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(34%); }
+}
+
+.status-card.is-arriving {
+  animation: announce-plate 300ms cubic-bezier(0.16, 0.9, 0.28, 1) both;
+}
+.status-card.is-arriving .announce-beam {
+  animation: announce-lights-up 340ms 60ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: 50% 0;
+}
+.status-card.is-arriving .announce-pool {
+  animation: announce-pool-up 320ms 180ms ease-out both;
+}
+.status-card.is-arriving .announce-sweep {
+  animation: announce-gleam 500ms 160ms ease-out both;
+}
+.status-card.is-arriving .status-eyebrow {
+  animation: announce-rise 260ms 120ms ease-out both;
+}
+.status-card.is-arriving .announce-given {
+  animation: announce-rise 280ms 180ms ease-out both;
+}
+.status-card.is-arriving .announce-family {
+  animation: announce-name 340ms 220ms cubic-bezier(0.16, 0.9, 0.28, 1) both;
+}
+.status-card.is-arriving .announce-portrait {
+  animation: announce-turn 380ms 180ms cubic-bezier(0.16, 0.9, 0.28, 1) both;
+}
+.status-card.is-arriving .announce-team {
+  animation: announce-nameplate 240ms 440ms cubic-bezier(0.16, 0.9, 0.28, 1) both;
+}
+.status-card.is-arriving .status-rule {
+  animation: announce-underline 260ms 380ms ease-out both;
+}
+.status-card.is-arriving .status-line {
+  animation: announce-rise 260ms 420ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* every base rule above is already the settled state */
+  .status-card.is-arriving,
+  .status-card.is-arriving * { animation: none !important; }
+}
+
+/* ==========================================================================
+   Team stage-light palette
+   --------------------------------------------------------------------------
+   Authored here, not sourced from any league or club: two lifted, dark-theme
+   readable "gel colours" per NFL abbreviation, used only as light. An
+   abbreviation with no entry matches nothing and keeps the amber house
+   accent declared on .status-card, so an unknown, misspelled or missing team
+   degrades instead of breaking.
+   ========================================================================== */
+
+.status-card[data-team="ARI"] { --team-1: #ff4a6b; --team-2: #b3123c; }
+.status-card[data-team="ATL"] { --team-1: #ff4757; --team-2: #b01722; }
+.status-card[data-team="BAL"] { --team-1: #a891ff; --team-2: #4a33a8; }
+.status-card[data-team="BUF"] { --team-1: #5c9bff; --team-2: #23428f; }
+.status-card[data-team="CAR"] { --team-1: #5cc8ff; --team-2: #10688f; }
+.status-card[data-team="CHI"] { --team-1: #ff8f3f; --team-2: #8f3a12; }
+.status-card[data-team="CIN"] { --team-1: #ff8a33; --team-2: #8f3c08; }
+.status-card[data-team="CLE"] { --team-1: #ff8347; --team-2: #7d3a17; }
+.status-card[data-team="DAL"] { --team-1: #8fb0ff; --team-2: #2b4a8c; }
+.status-card[data-team="DEN"] { --team-1: #ff943f; --team-2: #8c4210; }
+.status-card[data-team="DET"] { --team-1: #6fcfff; --team-2: #0d6a94; }
+.status-card[data-team="GB"]  { --team-1: #ffd75c; --team-2: #2f6b3f; }
+.status-card[data-team="HOU"] { --team-1: #7fa3ff; --team-2: #1f2f66; }
+.status-card[data-team="IND"] { --team-1: #7ab8ff; --team-2: #17498c; }
+.status-card[data-team="JAX"] { --team-1: #48ded0; --team-2: #0f645d; }
+.status-card[data-team="KC"]  { --team-1: #ff4a5f; --team-2: #a3122a; }
+.status-card[data-team="LAC"] { --team-1: #5cd8ff; --team-2: #0d6b94; }
+.status-card[data-team="LAR"] { --team-1: #ffcf5c; --team-2: #2c4f96; }
+.status-card[data-team="LV"]  { --team-1: #d3dbe6; --team-2: #454b54; }
+.status-card[data-team="MIA"] { --team-1: #3fe3cb; --team-2: #0b7a6d; }
+.status-card[data-team="MIN"] { --team-1: #b18bff; --team-2: #4d2290; }
+.status-card[data-team="NE"]  { --team-1: #8fb0ff; --team-2: #22325e; }
+.status-card[data-team="NO"]  { --team-1: #e9cf95; --team-2: #7a5f24; }
+.status-card[data-team="NYG"] { --team-1: #6f9bff; --team-2: #1a3070; }
+.status-card[data-team="NYJ"] { --team-1: #4ce08d; --team-2: #10693c; }
+.status-card[data-team="PHI"] { --team-1: #49dbc6; --team-2: #0d5b53; }
+.status-card[data-team="PIT"] { --team-1: #ffd94a; --team-2: #6f5c07; }
+.status-card[data-team="SEA"] { --team-1: #9ce85c; --team-2: #2d5e18; }
+.status-card[data-team="SF"]  { --team-1: #ff5c52; --team-2: #8f1e16; }
+.status-card[data-team="TB"]  { --team-1: #ff5445; --team-2: #8c1a11; }
+.status-card[data-team="TEN"] { --team-1: #7fbfff; --team-2: #1b4477; }
+.status-card[data-team="WAS"] { --team-1: #ffc95c; --team-2: #7a2418; }
 
 /* ==========================================================================
    Typing indicator

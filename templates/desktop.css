@@ -1,0 +1,636 @@
+/* ==========================================================================
+   Players Lounge — desktop draft board (two panes)
+
+   Loaded AFTER lounge.css, which it deliberately depends on: every chat
+   element in the right pane (.row, .bubble, .avatar, .speaker, .chip,
+   .status-card, .typing-bubble, .watermark) is styled entirely by lounge.css,
+   so a redesign of the render template lands here automatically.
+
+   Two things lounge.css owns that a desktop page must take back:
+     - `html, body` sizing (the render target is a fixed 1080x1920 page)
+     - the `#stage`/`#scroll` chrome (this page has no #stage at all)
+   Everything else below is new furniture, namespaced away from the render
+   template's selectors.
+
+   The chat column is a real 1080px-wide lounge canvas shrunk with `zoom`, not
+   a re-typeset copy: `zoom` keeps layout, scrolling, scrollIntoView and
+   getBoundingClientRect all consistent, which `transform: scale()` does not.
+   ========================================================================== */
+
+:root {
+  --panel:        #16121e;
+  --panel-hi:     #1d1826;
+  --row:          rgba(255, 255, 255, 0.018);
+  --row-hover:    rgba(255, 255, 255, 0.055);
+  --edge:         rgba(255, 255, 255, 0.075);
+  --reach:        #ffb648;   /* taken before ADP */
+  --slide:        #7fd4ff;   /* fell past ADP */
+  --ok:           #4ade80;
+
+  --pos-QB:  #ff9d5c;
+  --pos-RB:  #4ade80;
+  --pos-WR:  #63b3ff;
+  --pos-TE:  #f472b6;
+  --pos-K:   #b9b2c6;
+  --pos-DEF: #a78bfa;
+
+  --chat-w:     clamp(400px, 33vw, 620px);
+  --canvas-zoom: 0.42;
+  --bar-h:      68px;
+}
+
+/* The HTML `hidden` attribute has to win over every `display` rule here,
+   otherwise the dock shows its idle copy and its live copy at once. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #0c0a12;
+  font-size: 14px;
+}
+
+.app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: var(--bar-h) minmax(0, 1fr);
+}
+
+/* ==========================================================================
+   Top bar
+   ========================================================================== */
+
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 20px;
+  background: linear-gradient(180deg, #1c1726, #15111d);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+
+.brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+
+.brand-badge {
+  flex: 0 0 auto;
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  display: grid; place-items: center;
+  font-size: 15px; font-weight: 800; letter-spacing: 0.06em;
+  color: #1a1222;
+  background: linear-gradient(148deg, var(--accent), #ff8f4d 58%, var(--violet));
+  box-shadow: 0 6px 16px rgba(255, 143, 77, 0.24);
+}
+
+.brand-id { min-width: 0; }
+
+.brand-title {
+  margin: 0;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.brand-sub {
+  margin: 2px 0 0;
+  font-size: 12px; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.app-tools { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; }
+
+.filter {
+  width: 290px;
+  font: inherit; font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  padding: 8px 12px;
+}
+.filter::placeholder { color: var(--text-dim); }
+.filter:focus { outline: none; border-color: rgba(255, 182, 72, 0.5); background: rgba(255, 255, 255, 0.075); }
+
+.toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-soft);
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+.toggle input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+.tools-count {
+  font-family: var(--mono);
+  font-size: 11.5px; letter-spacing: 0.04em;
+  color: var(--text-dim);
+  min-width: 96px; text-align: right;
+}
+
+/* ==========================================================================
+   Panes
+   ========================================================================== */
+
+/* Both axes must be explicitly bounded. An implicit grid row is auto-sized,
+   which lets a 30 000px board grow the pane and scroll the whole document
+   instead of the pane's own scroller. */
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--chat-w);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  background: #100d17;
+  border-right: 1px solid var(--edge);
+}
+
+/* --- shared column geometry ---------------------------------------------- */
+
+.board-head,
+.pick {
+  display: grid;
+  grid-template-columns:
+    64px                    /* pick no       */
+    92px                    /* round · slot  */
+    minmax(190px, 1.35fr)   /* player        */
+    52px                    /* position      */
+    58px                    /* nfl team      */
+    minmax(150px, 1fr)      /* manager       */
+    104px                   /* adp delta     */
+    88px;                   /* lounge        */
+  align-items: center;
+  gap: 12px;
+}
+
+.board-head {
+  padding: 11px 22px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: #15111d;
+  border-bottom: 1px solid var(--edge);
+}
+.board-head .num { text-align: right; }
+
+.board-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 18px;
+  scrollbar-color: #3a3348 transparent;
+}
+.board-scroll:focus { outline: none; }
+.board-scroll::-webkit-scrollbar { width: 11px; }
+.board-scroll::-webkit-scrollbar-thumb { background: #332d42; border-radius: 6px; border: 3px solid #100d17; }
+
+/* --- rounds --------------------------------------------------------------- */
+
+.round.is-empty { display: none; }
+
+.round-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 9px 22px;
+  font-size: 12px;
+  background: linear-gradient(180deg, #191423 82%, rgba(25, 20, 35, 0.86));
+  border-bottom: 1px solid var(--edge);
+  backdrop-filter: blur(4px);
+}
+
+.round-no {
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.round-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.round-scenes {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.round-scenes:empty { display: none; }
+
+/* --- one pick ------------------------------------------------------------- */
+
+.pick {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text-soft);
+  background: transparent;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  padding: 9px 22px 9px 19px;
+  cursor: default;
+}
+
+.pick:nth-child(even) { background: var(--row); }
+.pick.is-filtered { display: none; }
+
+.pick:hover { background: var(--row-hover); }
+.pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pick.has-scene { cursor: pointer; color: var(--text); }
+
+/* Picks with no Lounge scene are shown, never hidden. Selecting one still
+   explains how to direct it, but it is inert against the transcript: the
+   chat pane does not move. */
+.pick.no-scene { opacity: 0.6; }
+.pick.no-scene .cell-player { font-weight: 550; }
+
+.pick.is-selected,
+.pick.is-selected:nth-child(even) {
+  background: linear-gradient(90deg, rgba(255, 182, 72, 0.16), rgba(255, 182, 72, 0.03) 62%);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.cell-no {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.pick.is-selected .cell-no { color: var(--accent); }
+
+.cell-slot {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.cell-player {
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.cell-manager {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.pos {
+  display: inline-block;
+  min-width: 40px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 0 4px;
+  border-radius: 6px;
+  color: var(--pos, var(--text-dim));
+  background: color-mix(in srgb, var(--pos, #888) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pos, #888) 34%, transparent);
+}
+
+.cell-team {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+}
+
+/* --- ADP delta ------------------------------------------------------------ */
+
+.cell-adp { text-align: right; white-space: nowrap; }
+
+.delta {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 7px 3px;
+  border-radius: 6px;
+}
+.delta.is-reach { color: var(--reach); background: rgba(255, 182, 72, 0.12); }
+.delta.is-slide { color: var(--slide); background: rgba(127, 212, 255, 0.11); }
+.delta.is-even  { color: var(--text-dim); background: rgba(255, 255, 255, 0.05); }
+
+/* An unranked player has no ADP at all — never invent one. */
+.cell-adp .unranked {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(148, 138, 166, 0.5);
+}
+
+.adp-raw {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: rgba(148, 138, 166, 0.62);
+  margin-top: 2px;
+}
+
+/* --- lounge column -------------------------------------------------------- */
+
+.scene-pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 9px 4px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--card-edge);
+  white-space: nowrap;
+}
+.scene-pill .msgs { opacity: 0.72; font-weight: 600; }
+
+.no-pill {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgba(148, 138, 166, 0.4);
+}
+
+.board-empty {
+  margin: 40px auto;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   Selection dock
+   ========================================================================== */
+
+.dock {
+  border-top: 1px solid var(--edge);
+  background: linear-gradient(180deg, #1a1524, #141019);
+  padding: 12px 22px 13px;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.35);
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+}
+
+.dock-idle {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+
+.dock-keys {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(148, 138, 166, 0.62);
+}
+.dock-keys b { color: var(--text-soft); font-weight: 700; }
+
+.dock-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+.dock-no {
+  font-family: var(--mono);
+  font-size: 13px; font-weight: 700;
+  color: var(--accent);
+}
+.dock-player { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.dock-meta { font-size: 12.5px; color: var(--text-dim); }
+
+.dock-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.btn {
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--text-soft);
+  background: #241e2f;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { background: #2c2539; color: var(--text); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.btn.primary {
+  color: #1a1222;
+  background: linear-gradient(160deg, var(--accent), #ff9c46);
+  border-color: transparent;
+}
+.btn.primary:hover { filter: brightness(1.07); color: #1a1222; }
+.btn.ghost { background: transparent; }
+
+.cmd {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-soft);
+  background: #0e0b14;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 7px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+  user-select: all;
+}
+
+.dock-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.dock-note:empty { display: none; }
+.dock-note .cmd-inline {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-soft);
+  background: #0e0b14;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 1px 6px 2px;
+  user-select: all;
+}
+
+/* ==========================================================================
+   Chat pane
+   ========================================================================== */
+
+.chat-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background:
+    radial-gradient(760px 560px at 80% -6%, var(--bg-glow-a), transparent 62%),
+    radial-gradient(660px 520px at 6% 104%, var(--bg-glow-b), transparent 60%),
+    var(--bg);
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(27, 22, 36, 0.97), rgba(27, 22, 36, 0.78));
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.32);
+  z-index: 2;
+}
+
+.chat-badge {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: 11px;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.06em;
+  color: #1a1222;
+  background: linear-gradient(148deg, var(--accent), #ff8f4d 58%, var(--violet));
+}
+
+.chat-id { flex: 1 1 auto; min-width: 0; }
+.chat-title { margin: 0; font-size: 15px; font-weight: 750; letter-spacing: -0.01em; }
+.chat-sub {
+  margin-top: 3px;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11.5px; color: var(--text-dim);
+}
+.chat-sub .live-dot { width: 8px; height: 8px; box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.13); }
+
+.chat-pill {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--card-edge);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+}
+
+.chat-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scrollbar-color: #3a3348 transparent;
+}
+.chat-scroll::-webkit-scrollbar { width: 10px; }
+.chat-scroll::-webkit-scrollbar-thumb { background: #332d42; border-radius: 6px; border: 3px solid #16121e; }
+
+/* The real 1080px lounge column, shrunk to the pane width. */
+.lounge-canvas {
+  width: 1080px;
+  zoom: var(--canvas-zoom);
+}
+
+/* --- one scene ------------------------------------------------------------ */
+
+.scene {
+  position: relative;
+  scroll-margin-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 400ms ease-out;
+}
+.scene:first-child { border-top: 0; }
+
+.scene::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 260ms ease-out;
+}
+.scene.is-selected::before { opacity: 0.55; }
+.scene.is-target { background: rgba(255, 182, 72, 0.055); }
+.scene.is-target::before { opacity: 1; }
+
+.scene-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  padding: 40px 40px 46px;
+}
+
+.scene-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+.scene-rows:empty { display: none; }
+
+.scene-status { display: flex; justify-content: center; }
+
+/* The status card's round/pick eyebrow already says which pick this is, so the
+   only extra chrome a long transcript needs is the drafting manager's slot. */
+.scene-marker {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 24px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.scene-marker::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.typing-row { align-items: center; }
+.typing-avatar { flex: 0 0 auto; }
+
+/* lounge.css anchors the watermark to the bottom of a 1920px stage; in a
+   continuously scrolling transcript it is simply the last line. */
+.lounge-canvas .watermark {
+  position: static;
+  height: auto;
+  padding: 26px 0 60px;
+  background: none;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   Narrow desktop windows
+   ========================================================================== */
+
+@media (max-width: 1180px) {
+  :root { --chat-w: clamp(340px, 38vw, 460px); }
+  .board-head, .pick { grid-template-columns: 56px 80px minmax(150px, 1.3fr) 48px 52px minmax(110px, 1fr) 92px 76px; }
+  .app-tools .filter { width: 190px; }
+}

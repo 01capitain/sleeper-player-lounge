@@ -16,8 +16,10 @@
 
    API:
      LOUNGE.render(payload)      final state, everything visible, no animation
-     LOUNGE.reset(payload)       previous messages + status card only,
-                                 every reaction bubble hidden
+                                 (the announcement is settled immediately)
+     LOUNGE.reset(payload)       previous messages + announcement only,
+                                 every reaction bubble hidden; the
+                                 announcement plays its <=680ms entrance
      LOUNGE.showTyping(speakerPlayerId)
      LOUNGE.hideTyping()
      LOUNGE.revealNext()         -> true if a bubble was revealed, else false
@@ -94,7 +96,7 @@
     payload: null,
     rows: [],        // reaction rows, in order
     revealed: 0,
-    speakers: {}     // speakerPlayerId -> { name, headshotUrl }
+    speakers: {}     // speakerPlayerId -> { name, headshotUrl, teamChip }
   };
 
   function nodes() {
@@ -173,35 +175,234 @@
     return bits.join(' · ');
   }
 
-  /* --- status card ------------------------------------------------------ */
+  /* --- draft announcement ------------------------------------------------
+     The centrepiece. buildStatusCard() is the single place the card is
+     built; lounge.css owns everything about how it is lit.
 
-  function buildStatusCard(pick, statusLine) {
+     Two things are read from state.speakers rather than from `pick`, because
+     the payload carries them on the drafted player's own reaction row:
+     his headshot and his team/position chip. Both are optional and both
+     degrade on their own - no headshot falls back to the monogram plate, an
+     unknown or absent team falls back to the amber house accent. */
+
+  /* "KC · TE" | { team: 'KC' } | "" -> "KC". Anything that is not a 2-3
+     letter abbreviation returns "", which leaves the card unkeyed and
+     therefore on the house accent. */
+  function teamAbbrev(chip) {
+    if (!chip) return '';
+    var raw = typeof chip === 'string' ? chip.split('·')[0] : chip.team;
+    raw = String(raw == null ? '' : raw).trim().toUpperCase();
+    return /^[A-Z]{2,3}$/.test(raw) ? raw : '';
+  }
+
+  /* "Travis Kelce" -> given "Travis", family "Kelce" (the hero line).
+     Everything after the first token stays together, so "Marvin Harrison Jr."
+     reads HARRISON JR. and a mononym keeps its single big line. */
+  function splitName(name) {
+    var cleaned = String(name == null ? '' : name).replace(/\s+/g, ' ').trim();
+    if (!cleaned) return { given: '', family: 'A Player' };
+    var i = cleaned.indexOf(' ');
+    if (i < 0) return { given: '', family: cleaned };
+    return { given: cleaned.slice(0, i), family: cleaned.slice(i + 1) };
+  }
+
+  /* Fit `node` to its column, measured rather than guessed, so a 30-character
+     surname is handled as reliably as a 5-character one.
+
+     First choice is one line, as large as it will go. If even the floor will
+     not fit on one line the text is allowed to wrap, and then takes the
+     largest size whose wrapped block is still `maxLines` tall - which reads
+     far better than a single line pinned at the floor.
+
+     Runs synchronously against real layout, so the node must already be in
+     the document. */
+  function fitLine(node, maxPx, minPx, maxLines) {
+    if (!node) return;
+    node.style.whiteSpace = 'nowrap';
+    node.style.fontSize = maxPx + 'px';
+    var avail = node.clientWidth;
+    if (!avail) {                       // not laid out (detached / hidden)
+      node.style.whiteSpace = '';
+      node.style.fontSize = '';
+      return;
+    }
+
+    var size = shrinkToWidth(node, maxPx, minPx, avail);
+    if (node.scrollWidth <= avail) return;   // one line, as big as it goes
+
+    /* Too long for one line even at the floor, so it has to wrap - but never
+       through the middle of a word. The size is capped at whatever the
+       longest unbreakable run can take (a word, or one hyphenated part of
+       one), which is what makes it break at the hyphen instead of chopping
+       a surname in half, and then lowered until the block fits `maxLines`. */
+    var style = getComputedStyle(node);
+    var ratio = (parseFloat(style.lineHeight) || size) / (parseFloat(style.fontSize) || size);
+    var limit = Math.max(1, maxLines || 2);
+    var full = node.textContent;
+
+    node.textContent = longestRun(full);
+    size = shrinkToWidth(node, maxPx, minPx, avail);
+    node.textContent = full;
+
+    node.style.whiteSpace = 'normal';
+    while (size > minPx && lineCount(node, ratio * size) > limit) {
+      size -= 2;
+      node.style.fontSize = size + 'px';
+    }
+  }
+
+  /* Largest even px size at or below maxPx that keeps `node` on one line. */
+  function shrinkToWidth(node, maxPx, minPx, avail) {
+    var size = maxPx;
+    node.style.fontSize = size + 'px';
+    while (size > minPx && node.scrollWidth > avail) {
+      size -= 2;
+      node.style.fontSize = size + 'px';
+    }
+    return size;
+  }
+
+  /* The longest stretch of text a line break cannot fall inside. Hyphens are
+     break opportunities, so "Featherstonehaugh-Wollensky" counts as two. */
+  function longestRun(text) {
+    var longest = '';
+    String(text == null ? '' : text).split(/\s+/).forEach(function (word) {
+      var segments = word.split('-');
+      for (var i = 0; i < segments.length; i++) {
+        var run = i < segments.length - 1 ? segments[i] + '-' : segments[i];
+        if (run.length > longest.length) longest = run;
+      }
+    });
+    return longest;
+  }
+
+  /* Rendered line count. scrollHeight overshoots line-height * lines (this
+     hero is set tight, at 0.96, so glyphs spill past their line boxes), which
+     is why this rounds rather than dividing exactly. */
+  function lineCount(node, lineHeightPx) {
+    if (!(lineHeightPx > 0)) return 1;
+    return Math.max(1, Math.round(node.scrollHeight / lineHeightPx));
+  }
+
+  /* Read off the card, not the root: the density fit can lower the hero
+     ceiling on the card itself, and this must see that value. */
+  function cssPx(node, name, fallback) {
+    var raw = getComputedStyle(node).getPropertyValue(name).trim();
+    var n = parseFloat(raw);
+    return isFinite(n) && n > 0 ? n : fallback;
+  }
+
+  /** Size the hero lines to the card. Run it after the card is laid out. */
+  function fitAnnouncement(card) {
+    if (!card) return;
+    fitLine(card.querySelector('.announce-given'),
+            cssPx(card, '--fs-given', 34), cssPx(card, '--fs-given-min', 22), 2);
+    fitLine(card.querySelector('.announce-family'),
+            cssPx(card, '--fs-hero', 116), cssPx(card, '--fs-hero-min', 40), 2);
+  }
+
+  /**
+   * Build the announcement.
+   * @param pick        payload.pick
+   * @param statusLine  optional override of the credit line
+   * @param arriving    true on reset() — plays the entrance; render() never
+   *                    passes it, so the still PNG is settled on frame one.
+   */
+  function buildStatusCard(pick, statusLine, arriving) {
     var p = pick || {};
-    var card = el('div', 'status-card');
+    var card = el('div', 'status-card announce');
+    if (arriving) card.classList.add('is-arriving');
 
-    var bits = ['DRAFT UPDATE'];
+    var subject = state.speakers[String(p.playerId)] || {};
+    var team = teamAbbrev(subject.teamChip);
+    if (team) card.setAttribute('data-team', team);
+
+    /* --- light, behind everything --- */
+    var lights = el('div', 'announce-stage');
+    lights.setAttribute('aria-hidden', 'true');
+    lights.appendChild(el('div', 'announce-beam'));
+    lights.appendChild(el('div', 'announce-pool'));
+    lights.appendChild(el('div', 'announce-sweep'));
+    card.appendChild(lights);
+
+    /* --- copy --- */
+    var copy = el('div', 'announce-copy');
+
+    var eyebrow = el('div', 'status-eyebrow');
+    eyebrow.appendChild(el('span', 'announce-flag', 'Draft Update'));
+    var bits = [];
     if (p.round != null) bits.push('Round ' + p.round);
     if (p.pickNo != null) bits.push('Pick ' + p.pickNo);
-    card.appendChild(el('div', 'status-eyebrow', bits.join(' · ')));
+    if (bits.length) eyebrow.appendChild(el('span', 'announce-coords', bits.join(' · ')));
+    copy.appendChild(eyebrow);
+
+    var parts = splitName(p.playerName);
+    var hero = el('div', 'announce-hero');
+    if (parts.given) hero.appendChild(el('span', 'announce-given', parts.given));
+    hero.appendChild(el('span', 'announce-family', parts.family));
+    copy.appendChild(hero);
+
+    copy.appendChild(el('div', 'status-rule'));
 
     var line = el('div', 'status-line');
     if (statusLine) {
       line.textContent = statusLine;
     } else {
-      line.appendChild(document.createTextNode(
-        (p.managerName || 'A manager') + ' selected '));
-      line.appendChild(el('span', 'picked', p.playerName || 'a player'));
+      line.appendChild(el('span', 'announce-credit', 'Selected by'));
+      line.appendChild(el('span', 'picked', p.managerName || 'a manager'));
     }
-    card.appendChild(line);
-    card.appendChild(el('div', 'status-rule'));
+    copy.appendChild(line);
+    card.appendChild(copy);
+
+    /* --- portrait: headshot if we have one, monogram plate if not --- */
+    var portrait = el('div', 'announce-portrait');
+    portrait.appendChild(
+      buildAvatar(p.playerId, p.playerName, subject.headshotUrl).node);
+    var plate = chipText(subject.teamChip);
+    if (plate) portrait.appendChild(el('div', 'announce-team', plate));
+    card.appendChild(portrait);
+
     return card;
   }
 
-  /* --- scrolling -------------------------------------------------------- */
+  /* --- scrolling and density -------------------------------------------- */
 
   function scrollToBottom() {
     var n = nodes();
     if (n.scroll) n.scroll.scrollTop = n.scroll.scrollHeight;
+  }
+
+  /* Thread density steps, loosest first. See "density fit" in lounge.css. */
+  var DENSITY_STEPS = ['is-tight', 'is-tighter', 'is-tightest'];
+
+  /**
+   * Keep the announcement on canvas.
+   *
+   * The thread is bottom-pinned, so a long enough set of reaction bubbles
+   * pushes the announcement up behind the header. When that happens the chat
+   * is tightened a step at a time — the announcement itself is never shrunk,
+   * because it is the point of the export.
+   *
+   * Deterministic: a bounded loop over a fixed list, measured against real
+   * layout, run once per populate() with every bubble present. The chosen
+   * density therefore holds for the whole scene, so revealNext() can never
+   * cause type to resize between two captured frames.
+   */
+  function fitThread() {
+    var n = nodes();
+    if (!n.scroll || !n.status) return;
+    for (var i = 0; i < DENSITY_STEPS.length; i++) {
+      n.scroll.classList.remove(DENSITY_STEPS[i]);
+    }
+    var card = n.status.firstElementChild;
+    if (!card) return;
+
+    for (var step = 0; step <= DENSITY_STEPS.length; step++) {
+      scrollToBottom();
+      if (card.getBoundingClientRect().top >=
+          n.scroll.getBoundingClientRect().top) return;
+      if (step < DENSITY_STEPS.length) n.scroll.classList.add(DENSITY_STEPS[step]);
+    }
   }
 
   /* --- population ------------------------------------------------------- */
@@ -212,7 +413,8 @@
       if (!m || m.speakerPlayerId == null) return;
       map[String(m.speakerPlayerId)] = {
         name: m.speakerName,
-        headshotUrl: m.headshotUrl
+        headshotUrl: m.headshotUrl,
+        teamChip: m.teamChip
       };
     }
     (payload.previousMessages || []).forEach(add);
@@ -246,11 +448,13 @@
       n.previous.appendChild(buildRow(m, { past: true }));
     });
 
-    // draft status card
+    // draft announcement (animates on reset, settled on render)
     clear(n.status);
-    n.status.appendChild(buildStatusCard(payload.pick, payload.statusLine));
+    var card = buildStatusCard(payload.pick, payload.statusLine, hideReactions === true);
+    n.status.appendChild(card);
 
-    // reaction bubbles
+    // reaction bubbles — built visible so the density fit below sees the
+    // whole scene, then hidden again when this is a reset()
     clear(n.reactions);
     var subjectId = payload.pick && payload.pick.playerId != null
       ? String(payload.pick.playerId) : null;
@@ -258,11 +462,26 @@
       var row = buildRow(m, {
         subject: subjectId != null && String(m.speakerPlayerId) === subjectId
       });
-      if (hideReactions) row.classList.add('is-hidden');
       n.reactions.appendChild(row);
       state.rows.push(row);
     });
-    if (!hideReactions) state.revealed = state.rows.length;
+
+    /* Size the hero, then choose the density, then size the hero again.
+       The first pass is what lets fitThread() measure a realistically tall
+       card - unsized, a long surname wraps at the 116px ceiling and reads as
+       four lines, which would tighten the chat for no reason. The second pass
+       exists because the tightest density step lowers the hero ceiling on the
+       card itself; it can only ever make the card shorter than the height the
+       density step was chosen against, never taller. */
+    fitAnnouncement(card);
+    fitThread();
+    fitAnnouncement(card);
+
+    if (hideReactions) {
+      state.rows.forEach(function (row) { row.classList.add('is-hidden'); });
+    } else {
+      state.revealed = state.rows.length;
+    }
 
     hideTyping();
     scrollToBottom();

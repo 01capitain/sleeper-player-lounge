@@ -25,6 +25,7 @@ import type { RenderFormat } from '../types.js';
 import { log, setLogLevel } from '../util/log.js';
 import { runDemo, type DemoOptions } from './commands/demo.js';
 import { runHistoryImport, type HistoryImportOptions } from './commands/history.js';
+import { runBoard, type BoardOptions } from './commands/board.js';
 import { runReact, type ReactOptions } from './commands/react.js';
 import { runScreenshot, type ScreenshotOptions } from './commands/screenshot.js';
 import { runSetup, type RunSetupOptions } from './commands/setup.js';
@@ -32,8 +33,9 @@ import { runSimulate, type SimulateOptions } from './commands/simulate.js';
 import { runWatch, type WatchOptions } from './commands/watch.js';
 import { DEFAULT_INTERVAL_SECONDS } from '../watch/poller.js';
 
-export { runDemo, runHistoryImport, runReact, runScreenshot, runSetup, runSimulate, runWatch };
+export { runBoard, runDemo, runHistoryImport, runReact, runScreenshot, runSetup, runSimulate, runWatch };
 export type {
+  BoardOptions,
   DemoOptions,
   HistoryImportOptions,
   ReactOptions,
@@ -196,6 +198,29 @@ export function buildProgram(): Command {
     .option('--open', 'open the rendered file')
     .action(async (options: ScreenshotOptions) => {
       await runScreenshot(options);
+    });
+
+  // --- board ----------------------------------------------------------------
+  program
+    .command('board')
+    .description('Build the desktop draft board — every pick beside the whole Lounge transcript')
+    .addHelpText(
+      'after',
+      '\nOne self-contained HTML file: no server, no network, safe to move or share.\n' +
+        'Every pick is listed with its ADP delta; the ones that have a Reaction are\n' +
+        'clickable and scroll the transcript to that scene, which can be replayed on the\n' +
+        'same beats the MP4 uses. This never calls the Director and never re-renders an\n' +
+        'export.\n\n' +
+        'Examples:\n' +
+        '  npm run lounge -- board --open\n' +
+        '  npm run lounge -- board --limit 60          the last 60 picks only\n' +
+        '  npm run lounge -- board --out /tmp/draft.html\n',
+    )
+    .option('--limit <n>', 'show only the last N picks', parseIntOption)
+    .option('--out <file>', 'write to this path instead of output/board.html')
+    .option('--open', 'open the built board')
+    .action(async (options: BoardOptions) => {
+      await runBoard(options);
     });
 
   // --- watch ----------------------------------------------------------------

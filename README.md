@@ -51,6 +51,7 @@ debug logging on stderr; stdout only ever carries content, so piping it is safe.
 | `simulate` | Replay stored Picks through the full pipeline. |
 | `react` | Re-render an existing Reaction in another format. Never calls the Director. |
 | `screenshot` | `react --format png`. |
+| `board` | Build the desktop draft board: every pick beside the whole Lounge transcript. |
 | `watch` | Poll the live slow draft and process new Picks as they land. |
 | `history import` | Build Fantasy Memory: 2025 rosters and championship rosters. |
 
@@ -69,6 +70,11 @@ npm run lounge -- react --latest --format html  # animates in a browser, one sel
 npm run lounge -- react --pick 74 --format gif
 npm run lounge -- screenshot --latest
 
+npm run lounge -- board                          # -> output/board.html
+npm run lounge -- board --open                   # build it and open it
+npm run lounge -- board --limit 60               # only the last 60 picks
+npm run lounge -- board --out /tmp/draft.html
+
 npm run lounge -- watch                          # poll every 25s until Ctrl-C
 npm run lounge -- watch --once                   # one poll, then exit
 npm run lounge -- watch --league <id> --interval 30
@@ -77,6 +83,33 @@ npm run lounge -- history import                 # the Simulation league chain
 npm run lounge -- history import --target        # hotelkit Fantasies instead
 npm run lounge -- history import --league <id>
 ```
+
+### The draft board
+
+`board` writes one self-contained HTML file — `output/board.html` by default — that puts the
+whole draft on a desktop page: the board on the left, the entire Lounge transcript on the
+right.
+
+- **Every pick is listed**, grouped by round, with its position, NFL team, drafting manager
+  and its **ADP delta** — `+30` for a reach, `-52` for a slide, and the word *unranked* when
+  `data/players/adp.json` has no ADP for that player. It never invents a number.
+- **Picks that have a Reaction are marked `Scene`.** Clicking one scrolls the transcript to
+  that pick's announcement and briefly highlights it. Picks with no Reaction are still shown,
+  greyed and inert against the transcript; selecting one tells you the `simulate --pick N` that
+  would direct it.
+- **Replay** re-animates the selected scene on the *same* `buildTimeline()` beats the MP4
+  encoder walks, so a rewind shows what an export would produce — down to the announcement
+  card's entrance.
+- The selected pick's export command (`npm run lounge -- react --pick N --format mp4`) sits in
+  the dock with a copy button.
+- Keyboard: `↑`/`↓` move, `R` replays, `/` focuses the filter. There is also a
+  *Lounge scenes only* toggle.
+
+The chat pane is not a re-implementation: `templates/lounge.css` and `templates/render.js` are
+inlined at build time and build the transcript, so it is exactly the renderer the PNG and MP4
+exports drive. **The board changes nothing about those exports** — they remain chat-only,
+1080x1920, one scene per file. Like the `html` format, the page is fully inlined and makes zero
+network requests, so it can be moved, emailed or shared as-is.
 
 ### `--stub`
 

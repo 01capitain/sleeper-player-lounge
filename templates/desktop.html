@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<!--
+  Players Lounge - desktop draft board.
+
+  This file is a SHELL, not a runnable page. `src/render/desktop.ts` reads it
+  and substitutes every placeholder below in a single pass, producing one
+  self-contained HTML file that opens from file:// with zero network requests.
+
+  Placeholders (double-underscore delimited, listed here without their
+  delimiters so this comment is never itself substituted):
+
+    TITLE        document title
+    HEADING      the app bar's headline
+    SUBHEADING   pick / round / team / scene counts
+    LOUNGE_CSS   templates/lounge.css, inlined VERBATIM
+    DESKTOP_CSS  templates/desktop.css, inlined
+    BOARD_ROWS   the left pane: every pick, grouped by round
+    DATA         window.__BOARD__ - one RenderPayload and Timeline per scene
+    RENDER_JS    templates/render.js, inlined VERBATIM - it builds the chat
+    DESKTOP_JS   templates/desktop.js, inlined
+
+  lounge.css and render.js are read at build time and never copied or edited,
+  so the chat pane inherits the render template's announcement card, bubbles
+  and avatars automatically. templates/lounge.html remains the one and only
+  1080x1920 export target; nothing here changes what PNG or MP4 produce.
+-->
+<style>__LOUNGE_CSS__</style>
+<style>__DESKTOP_CSS__</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="app-bar">
+    <div class="brand">
+      <span class="brand-badge" aria-hidden="true">PL</span>
+      <div class="brand-id">
+        <h1 class="brand-title">__HEADING__</h1>
+        <p class="brand-sub">__SUBHEADING__</p>
+      </div>
+    </div>
+    <div class="app-tools">
+      <input id="filter" class="filter" type="search" autocomplete="off"
+             placeholder="Filter player, position, team or manager" aria-label="Filter picks">
+      <label class="toggle"><input type="checkbox" id="scenes-only"> Lounge scenes only</label>
+      <span class="tools-count" id="visible-count"></span>
+    </div>
+  </header>
+
+  <div class="panes">
+
+    <section class="board-pane" aria-label="Draft board">
+      <div class="board-head" role="presentation">
+        <span>Pick</span>
+        <span>Rd&nbsp;&middot;&nbsp;Slot</span>
+        <span>Player</span>
+        <span>Pos</span>
+        <span>NFL</span>
+        <span>Manager</span>
+        <span class="num">ADP&nbsp;&#916;</span>
+        <span>Lounge</span>
+      </div>
+      <div class="board-scroll" id="board-scroll" tabindex="-1">
+__BOARD_ROWS__
+        <p class="board-empty" id="board-empty" hidden>No pick matches that filter.</p>
+      </div>
+      <footer class="dock" id="dock" data-state="idle">
+        <div class="dock-idle" id="dock-idle">
+          Select a pick to jump the transcript to it. Picks marked
+          <span class="scene-pill">Scene</span> can be replayed and exported.
+          <span class="dock-keys">&uarr;&darr; move &middot; <b>R</b> replay &middot; <b>/</b> filter</span>
+        </div>
+        <div class="dock-live" id="dock-live" hidden>
+          <div class="dock-main">
+            <span class="dock-no" id="dock-no"></span>
+            <span class="dock-player" id="dock-player"></span>
+            <span class="dock-meta" id="dock-meta"></span>
+          </div>
+          <div class="dock-actions">
+            <button type="button" class="btn primary" id="replay">&#9654; Replay scene</button>
+            <button type="button" class="btn" id="jump">Jump to chat</button>
+            <code class="cmd" id="export-cmd"></code>
+            <button type="button" class="btn ghost" id="copy">Copy</button>
+          </div>
+          <p class="dock-note" id="dock-note"></p>
+        </div>
+      </footer>
+    </section>
+
+    <aside class="chat-pane" aria-label="Players Lounge transcript">
+      <header class="chat-head">
+        <span class="chat-badge" aria-hidden="true">PL</span>
+        <div class="chat-id">
+          <h2 class="chat-title">Players Lounge</h2>
+          <div class="chat-sub">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span id="chat-sub-text">draft night</span>
+          </div>
+        </div>
+        <span class="chat-pill">Parody</span>
+      </header>
+      <div class="chat-scroll" id="chat-scroll">
+        <div class="lounge-canvas" id="lounge-canvas"></div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<script>__DATA__</script>
+<script>__RENDER_JS__</script>
+<script>__DESKTOP_JS__</script>
+</body>
+</html>

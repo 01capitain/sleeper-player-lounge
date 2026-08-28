@@ -8,10 +8,18 @@
   Mirrors the lounge.html skeleton verbatim and injects sample data.
 
   The sample deliberately doubles as a stress test:
-    - no headshotUrl anywhere, so every avatar exercises the monogram fallback
+    - no headshotUrl anywhere, so every avatar exercises the monogram fallback,
+      including the announcement's big portrait plate
     - one 280-character message (Kyle Pitts) at the layout limit
     - one long hyphenated speaker name (Amon-Ra St. Brown)
+    - a 19-character manager name in the announcement's credit line
+    - a KC team chip on the drafted player, which is what keys the
+      announcement's team stage-light palette
   Sample pick is real: Defensive Bros 2026 draft, round 9, pick 119, Travis Kelce.
+
+  Buttons: "Final state" is the still PNG path (settled, no animation);
+  "Reset" is the video path's opening beat and plays the announcement's
+  entrance, which is done inside 700ms.
 -->
 <link rel="stylesheet" href="lounge.css">
 <style>
@@ -82,7 +90,7 @@
       pickNo: 119,
       playerId: "1466",
       playerName: "Travis Kelce",
-      managerName: "Max"
+      managerName: "RadebergBearTheater"
     },
     memberCount: 14,
     watermark: "Players Lounge • Fantasy parody",
@@ -97,10 +105,10 @@
     reactions: [
       { speakerPlayerId: "1466", speakerName: "Travis Kelce", delayMs: 400,
         teamChip: "KC · TE",
-        text: "ROUND NINE?! Max my guy, this is the bargain of the entire era 😤" },
+        text: "ROUND NINE?! my guy, this is the bargain of the entire era 😤" },
       { speakerPlayerId: "4046", speakerName: "Patrick Mahomes", delayMs: 1500,
         teamChip: "KC · QB",
-        text: "told y'all. congrats Max, you just won the draft" },
+        text: "told y'all. congrats Radeberg, you just won the draft" },
       { speakerPlayerId: "7553", speakerName: "Kyle Pitts", delayMs: 2900,
         teamChip: "ATL · TE",
         text: "wild how a tight end going in round nine is a steal but when I go in round six everybody acts like the league personally wronged them. I had a good camp. I'm serious this time. 2026 is different and I'm going to enjoy proving every one of you wrong." },

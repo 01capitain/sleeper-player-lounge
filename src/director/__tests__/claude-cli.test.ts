@@ -19,6 +19,7 @@ import {
   REQUIRED_CLI_FLAGS,
   buildPrompt,
   parseEnvelope,
+  DEFAULT_DIRECTOR_MODEL,
   productRuleViolations,
   renderUserPrompt,
   type DirectorSpawn,
@@ -150,7 +151,7 @@ describe('ADR 0001 flag set (the isolation guard)', () => {
     }
     // The values that actually close the box: no tools, no personal settings,
     // and our own system prompt rather than the CLI's default one.
-    expect(args?.[args.indexOf('--model') + 1]).toBe('sonnet');
+    expect(args?.[args.indexOf('--model') + 1]).toBe(DEFAULT_DIRECTOR_MODEL);
     expect(args?.[args.indexOf('--tools') + 1]).toBe('');
     expect(args?.[args.indexOf('--output-format') + 1]).toBe('json');
     expect(args?.[args.indexOf('--setting-sources') + 1]).toBe('');
@@ -276,6 +277,19 @@ describe('validation and the single retry', () => {
     const spawn = fakeSpawn([envelope(impostor)]);
     const director = new ClaudeCliDirector({ spawn, failedEventsFile: path.join(dir, 'failed.jsonl') });
     await expect(director.generateReaction(context)).rejects.toThrow(/not present in the context/);
+  });
+
+  it('rejects a speaker whose name and player id belong to different players', async () => {
+    // Observed in a real run: speakerName "Justin Jefferson" carrying Travis
+    // Kelce's id 1466. Both were "known", so an id-OR-name check passed it, and
+    // the scene rendered Kelce's headshot and KC/TE chip above Jefferson's name.
+    const context = await makeContext();
+    const swapped = validReaction(context);
+    const first = swapped.reactions[0] as { speakerPlayerId: string; speakerName: string };
+    const second = swapped.reactions[1] as { speakerPlayerId: string; speakerName: string };
+    first.speakerName = second.speakerName;
+
+    expect(productRuleViolations(swapped, context).join(' ')).toMatch(/ids and names must match/);
   });
 
   it('rejects a history reference that does not name its season', async () => {

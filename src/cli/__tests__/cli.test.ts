@@ -28,7 +28,16 @@ describe('command surface', () => {
     const names = buildProgram()
       .commands.map((cmd) => cmd.name())
       .sort();
-    expect(names).toEqual(['demo', 'history', 'react', 'screenshot', 'setup', 'simulate', 'watch']);
+    expect(names).toEqual([
+      'board',
+      'demo',
+      'history',
+      'react',
+      'screenshot',
+      'setup',
+      'simulate',
+      'watch',
+    ]);
   });
 
   it('registers `history import` with --league and --target', () => {
@@ -79,7 +88,7 @@ describe('command surface', () => {
   });
 
   it('accepts --verbose after the subcommand name, where people actually type it', () => {
-    for (const name of ['demo', 'simulate', 'react', 'screenshot', 'watch', 'setup', 'history']) {
+    for (const name of ['demo', 'simulate', 'react', 'screenshot', 'board', 'watch', 'setup', 'history']) {
       expect(flags(command(name))).toContain('--verbose');
     }
     expect(flags(buildProgram())).toContain('--verbose');
