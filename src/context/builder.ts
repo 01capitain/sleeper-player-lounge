@@ -82,18 +82,30 @@ export const FIRST_ALLOWED_HISTORY_SEASON = 2025;
  * "no fantasy history", which is always a safe answer.
  */
 export interface HistoryModuleLike {
+  /** Must be awaited before `historyFor` works: the store is module-level state. */
   loadHistory?: () => unknown;
   historyFor?: (playerId: string) => PlayerHistory | null | undefined;
+  /** Truthy (boolean or non-empty array) when the two players are linked. */
   sharedRoster2025?: (a: string, b: string) => unknown;
   sharedChampionship?: (a: string, b: string) => unknown;
-  /** Throws when a Context carries history the Fantasy Memory rules forbid. */
-  assertNoForbiddenHistory?: (context: unknown) => void;
+  /** Throws when a `PlayerHistory` carries roster memory the rules forbid. */
+  assertNoForbiddenHistory?: (
+    history: PlayerHistory | readonly PlayerHistory[] | null | undefined,
+  ) => void;
 }
 
 /** The slice of `src/import/players.ts` this module uses. */
 export type TeammatesOf = (
   playerId: string,
   players: Record<string, SleeperPlayer>,
+  limit?: number,
+) => NflTeammate[] | undefined;
+
+/** `positionRivals` from `src/import/players.ts`. */
+export type PositionRivalsOf = (
+  playerId: string,
+  players: Record<string, SleeperPlayer>,
+  limit?: number,
 ) => NflTeammate[] | undefined;
 
 // ---------------------------------------------------------------------------
@@ -150,6 +162,8 @@ export interface BuildContextDeps {
   history?: HistoryModuleLike | null;
   /** `teammatesOf` from `src/import/players.ts`. */
   teammatesOf?: TeammatesOf | null;
+  /** `positionRivals` from `src/import/players.ts`. */
+  positionRivalsOf?: PositionRivalsOf | null;
   signalOptions?: DraftSignalOptions;
   /** Overrides the `eventId`-derived seed. Tests use this. */
   seed?: number | string;
@@ -179,8 +193,9 @@ export async function buildContext(
 
   const priorPicks = deps.priorPicks ?? (await loadPriorPicks(pick));
   const history = deps.history === undefined ? await loadHistoryModule() : deps.history;
-  const teammatesOf =
-    deps.teammatesOf === undefined ? await loadTeammatesOf() : deps.teammatesOf;
+  const playersModule = await loadPlayersModule(deps);
+  const teammatesOf = playersModule.teammatesOf;
+  const positionRivalsOf = playersModule.positionRivalsOf;
 
   // --- manager + roster so far ---------------------------------------------
   const manager: ContextManager = {
@@ -222,7 +237,10 @@ export async function buildContext(
     players,
     pick.playerId,
   );
-  const positionRivals = seededPositionRivals(pick, starPlayers, starMeta, relationships);
+  const positionRivals = mergeRefs(
+    seededPositionRivals(pick, starPlayers, starMeta, relationships),
+    datasetPositionRivals(pick, players, positionRivalsOf),
+  );
 
   // --- who is eligible to speak ---------------------------------------------
   const actors = selectActors({
@@ -293,7 +311,12 @@ export async function buildContext(
   };
 
   // --- the boundary is enforced here, not in the prompt ---------------------
-  history?.assertNoForbiddenHistory?.(context);
+  // `assertNoForbiddenHistory` takes the histories themselves, so hand it every
+  // record that is about to reach the prompt.
+  history?.assertNoForbiddenHistory?.([
+    ...(draftedPlayerHistory ? [draftedPlayerHistory] : []),
+    ...Object.values(speakerHistories),
+  ]);
   assertContextClean(context, {
     firstAllowedSeason:
       config?.historyRules.ignoreRosterHistoryBefore ?? FIRST_ALLOWED_HISTORY_SEASON,
@@ -419,10 +442,16 @@ async function loadPriorPicks(pick: Pick): Promise<Pick[]> {
   return rows.filter((row) => row.draftId === pick.draftId && row.pickNo < pick.pickNo);
 }
 
-/** `src/history/index.ts` is owned by another agent; absence is not an error. */
+/**
+ * `src/history/index.ts` keeps its store in module-level state, so `loadHistory()`
+ * must be awaited before `historyFor` will answer. Absence of the module — or of
+ * the history files — is not an error: no Fantasy Memory is always a safe Context.
+ */
 async function loadHistoryModule(): Promise<HistoryModuleLike | null> {
   try {
-    return (await import('../history/index.js')) as HistoryModuleLike;
+    const mod = (await import('../history/index.js')) as HistoryModuleLike;
+    await mod.loadHistory?.();
+    return mod;
   } catch (error) {
     log.debug('context: history module unavailable, running without Fantasy Memory', error);
     return null;
@@ -430,14 +459,23 @@ async function loadHistoryModule(): Promise<HistoryModuleLike | null> {
 }
 
 /** `src/import/players.ts` is owned by another agent; absence is not an error. */
-async function loadTeammatesOf(): Promise<TeammatesOf | null> {
-  try {
-    const mod = (await import('../import/players.js')) as { teammatesOf?: TeammatesOf };
-    return mod.teammatesOf ?? null;
-  } catch (error) {
-    log.debug('context: players importer unavailable, deriving teammates locally', error);
-    return null;
+async function loadPlayersModule(
+  deps: BuildContextDeps,
+): Promise<{ teammatesOf: TeammatesOf | null; positionRivalsOf: PositionRivalsOf | null }> {
+  const needsTeammates = deps.teammatesOf === undefined;
+  const needsRivals = deps.positionRivalsOf === undefined;
+  let loaded: { teammatesOf?: TeammatesOf; positionRivals?: PositionRivalsOf } = {};
+  if (needsTeammates || needsRivals) {
+    try {
+      loaded = (await import('../import/players.js')) as typeof loaded;
+    } catch (error) {
+      log.debug('context: players importer unavailable, deriving teammates locally', error);
+    }
   }
+  return {
+    teammatesOf: needsTeammates ? loaded.teammatesOf ?? null : deps.teammatesOf ?? null,
+    positionRivalsOf: needsRivals ? loaded.positionRivals ?? null : deps.positionRivalsOf ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +489,7 @@ function resolveNflTeammates(
 ): NflTeammate[] {
   if (teammatesOf) {
     try {
-      const result = teammatesOf(pick.playerId, players);
+      const result = teammatesOf(pick.playerId, players, 8);
       if (Array.isArray(result)) {
         return result.filter((mate) => mate.playerId !== pick.playerId);
       }
@@ -599,6 +637,44 @@ function seededPositionRivals(
       position: meta?.position ?? star.position,
       nflTeam: meta?.nflTeam ?? null,
     });
+  }
+  return out;
+}
+
+/** Position rivals drawn from the live Sleeper dataset, when the importer offers them. */
+function datasetPositionRivals(
+  pick: Pick,
+  players: Record<string, SleeperPlayer>,
+  positionRivalsOf: PositionRivalsOf | null,
+): ActorRef[] {
+  if (!positionRivalsOf) return [];
+  try {
+    const rivals = positionRivalsOf(pick.playerId, players, 5);
+    if (!Array.isArray(rivals)) return [];
+    return rivals
+      .filter((rival) => rival.playerId !== pick.playerId)
+      .map((rival) => ({
+        playerId: rival.playerId,
+        name: rival.name,
+        position: rival.position ?? null,
+        nflTeam: rival.nflTeam ?? null,
+      }));
+  } catch (error) {
+    log.debug('context: positionRivals failed', error);
+    return [];
+  }
+}
+
+/** Concatenate ActorRef lists, keeping the first entry for each player id. */
+function mergeRefs(...lists: ActorRef[][]): ActorRef[] {
+  const seen = new Set<string>();
+  const out: ActorRef[] = [];
+  for (const list of lists) {
+    for (const ref of list) {
+      if (seen.has(ref.playerId)) continue;
+      seen.add(ref.playerId);
+      out.push(ref);
+    }
   }
   return out;
 }

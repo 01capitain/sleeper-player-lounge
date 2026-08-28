@@ -168,15 +168,18 @@ describe('buildContext', () => {
     expect(context.recentMessages.at(-1)?.seq).toBe(45);
   });
 
-  it('calls assertNoForbiddenHistory from the history module', async () => {
+  it('hands every history it is about to expose to assertNoForbiddenHistory', async () => {
     const assertNoForbiddenHistory = vi.fn();
     const history: HistoryModuleLike = {
-      historyFor: () => null,
+      historyFor: (playerId) => (playerId === '9001' ? history2025('9001') : null),
       assertNoForbiddenHistory,
     };
     await buildContext(makePick(), { ...baseDeps, history });
     expect(assertNoForbiddenHistory).toHaveBeenCalledTimes(1);
-    expect(assertNoForbiddenHistory.mock.calls[0]?.[0]).toHaveProperty('speakerHistories');
+    // The real module takes PlayerHistory records, not a Context.
+    const handed = assertNoForbiddenHistory.mock.calls[0]?.[0] as { playerId: string }[];
+    expect(Array.isArray(handed)).toBe(true);
+    expect(handed.map((entry) => entry.playerId)).toContain('9001');
   });
 
   it('refuses to return a Context carrying pre-2025 roster history', async () => {
@@ -252,5 +255,25 @@ describe('buildContext', () => {
       const expected = starMetaFixture[actor.starKey]?.playerId;
       if (expected) expect(actor.playerId).toBe(expected);
     }
+  });
+});
+
+describe('wiring against the real history and import modules', () => {
+  it('builds a Context with no injected history or player importer', async () => {
+    // `history` and `teammatesOf` are omitted entirely, so the lazy imports of
+    // `src/history/index.ts` and `src/import/players.ts` actually run. Both are
+    // offline: `loadHistory()` only reads local files and tolerates their absence.
+    const context = await buildContext(makePick(), {
+      players,
+      starPlayers: unconnectedRegulars,
+      state: { season: 2026, lastProcessedPickNo: 0, activeRunningJokes: [], activeRivalries: [], recentTone: 'pre_draft' },
+      recentMessages: [],
+      priorPicks: [],
+    });
+
+    expect(context.actors[0]?.playerId).toBe('9001');
+    // `teammatesOf` from the real importer finds the other Charger.
+    expect(context.nflTeammates.map((mate) => mate.name)).toEqual(['Ladd McConkey']);
+    expect(context.actors.some((actor) => actor.role === 'regular')).toBe(true);
   });
 });

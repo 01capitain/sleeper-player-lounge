@@ -677,7 +677,9 @@ function renderRoom(context: LoungeContext): string[] {
       for (const lore of star.leagueLore ?? []) out.push(`- League lore: ${lore}`);
       for (const guardrail of star.guardrails ?? []) out.push(`- Must: ${guardrail}`);
     }
-    const extraReasons = reasons.filter((reason) => reason !== headline);
+    // Drop reasons that merely restate the headline, so the block stays short.
+    const headlineKey = reasonKey(headline);
+    const extraReasons = reasons.filter((reason) => !headlineKey.includes(reasonKey(reason)));
     if (extraReasons.length > 0) out.push(`In the room because: ${extraReasons.join('; ')}.`);
     out.push('');
   };
@@ -693,7 +695,10 @@ function renderRoom(context: LoungeContext): string[] {
           ? 'THE DRAFTED PLAYER. He must send at least one message.'
           : headlineForRole(actor.role, context.pick.playerName),
         actor.star,
-        actor.reasons,
+        // The mandatory reason is already the headline; keep the rest.
+        actor.mandatory
+          ? actor.reasons.filter((reason) => !reason.startsWith('the drafted player'))
+          : actor.reasons,
       );
     }
     return out;
@@ -732,6 +737,11 @@ function renderRoom(context: LoungeContext): string[] {
     );
   }
   return out;
+}
+
+/** Loose comparison key, so "Current NFL teammate of X." matches "current NFL teammate of X". */
+function reasonKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim();
 }
 
 function headlineForRole(role: string, draftedName: string): string {
