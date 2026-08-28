@@ -393,8 +393,10 @@ export interface DraftSignals {
   positionRun?: string;
   /** True when the Pick stacks with a QB the Manager already owns. */
   isStack?: boolean;
-  /** How far the player fell below his expected rank, in picks. */
+  /** How far the player fell below his `search_rank`, in picks. */
   fellBelowRank?: number;
+  /** How far ahead of his `search_rank` the player was taken, in picks. */
+  reachedAboveRank?: number;
 }
 
 /**

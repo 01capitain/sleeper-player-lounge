@@ -110,3 +110,58 @@ describe('quiet picks', () => {
     expect(computeDraftSignals(makePick({ pickNo: 42 }), [], {})).toEqual({});
   });
 });
+
+describe('draft surprise is symmetric and league-relative', () => {
+  const players = makePlayers([
+    { player_id: 'star', full_name: 'Falling Star', position: 'WR', search_rank: 10 },
+    { player_id: 'guy', full_name: 'Reached Guy', position: 'WR', search_rank: 90 },
+  ]);
+
+  it('reports a reach when a player goes far ahead of his search_rank', () => {
+    // rank 90, taken at 60 => 30 picks early, well past a 14-team threshold of 18.
+    const pick = makePick({ pickNo: 60, playerId: 'guy', position: 'WR' });
+    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
+    expect(signals.reachedAboveRank).toBe(30);
+    expect(signals.fellBelowRank).toBeUndefined();
+  });
+
+  it('still reports a fall when a player slides past his search_rank', () => {
+    const pick = makePick({ pickNo: 45, playerId: 'star', position: 'WR' });
+    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
+    expect(signals.fellBelowRank).toBe(35);
+    expect(signals.reachedAboveRank).toBeUndefined();
+  });
+
+  it('says nothing when the pick lands near his search_rank', () => {
+    const pick = makePick({ pickNo: 14, playerId: 'star', position: 'WR' });
+    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
+    expect(signals.fellBelowRank).toBeUndefined();
+    expect(signals.reachedAboveRank).toBeUndefined();
+  });
+
+  it('scales the threshold with league size, so 8-team and 14-team differ', () => {
+    // rank 10, taken at 22 => 12 picks late.
+    const pick = makePick({ pickNo: 22, playerId: 'star', position: 'WR' });
+
+    // 8-team league: threshold = round(8 * 1.25) = 10, so 12 picks IS a fall.
+    expect(computeDraftSignals(pick, [], players, { teams: 8 }).fellBelowRank).toBe(12);
+
+    // 14-team league: threshold = round(14 * 1.25) = 18, so the same 12 picks is not.
+    expect(computeDraftSignals(pick, [], players, { teams: 14 }).fellBelowRank).toBeUndefined();
+  });
+
+  it('exposes the rank and threshold it judged against', () => {
+    const pick = makePick({ pickNo: 60, playerId: 'guy', position: 'WR' });
+    const detail = computeDraftSignalDetail(pick, [], players, { teams: 8 });
+    expect(detail.expectedRank).toBe(90);
+    expect(detail.surpriseThreshold).toBe(10);
+  });
+
+  it('makes no claim when the player has no search_rank', () => {
+    const noRank = makePlayers([{ player_id: 'ghost', position: 'WR' }]);
+    const pick = makePick({ pickNo: 200, playerId: 'ghost', position: 'WR' });
+    const signals = computeDraftSignals(pick, [], noRank, { teams: 8 });
+    expect(signals.fellBelowRank).toBeUndefined();
+    expect(signals.reachedAboveRank).toBeUndefined();
+  });
+});

@@ -15,15 +15,35 @@ export interface DraftSignalOptions {
   positionRunWindow?: number;
   /** N — how many of those must share the position. Default 3. */
   positionRunThreshold?: number;
-  /** How many picks past his `search_rank` counts as an obvious fall. Default 12. */
-  fallThreshold?: number;
+  /**
+   * How far from his `search_rank` a Pick must land before it is worth
+   * remarking on, expressed in ROUNDS rather than picks.
+   *
+   * A flat pick count means different things in different leagues: 12 picks is
+   * a round and a half in an 8-team league but under a full round in a
+   * 14-team one. Expressing the threshold in rounds keeps "he fell" meaning
+   * the same thing to everyone at the table. Default 1.25 rounds.
+   */
+  surpriseRounds?: number;
+  /**
+   * Teams in the league, used to convert `surpriseRounds` into picks.
+   * hotelkit Fantasies is an 8-team league; the simulation draft is 14.
+   */
+  teams?: number;
 }
 
 export const DEFAULT_SIGNAL_OPTIONS: Required<DraftSignalOptions> = {
   positionRunWindow: 5,
   positionRunThreshold: 3,
-  fallThreshold: 12,
+  surpriseRounds: 1.25,
+  teams: 12,
 };
+
+/** Picks of slack allowed before a Pick counts as a fall or a reach. */
+export function surpriseThreshold(opts: Required<DraftSignalOptions>): number {
+  const teams = Number.isFinite(opts.teams) && opts.teams > 0 ? opts.teams : 12;
+  return Math.max(3, Math.round(teams * opts.surpriseRounds));
+}
 
 /** A richer read on the same Pick, for callers that want the detail. */
 export interface DraftSignalDetail extends DraftSignals {
@@ -33,8 +53,10 @@ export interface DraftSignalDetail extends DraftSignals {
   positionRunWindow?: number;
   /** Names already on this Manager's roster that share the drafted player's NFL team. */
   stackWith?: string[];
-  /** The `search_rank` the fall was measured against. */
+  /** The `search_rank` the fall or reach was measured against. */
   expectedRank?: number;
+  /** Picks of slack that were required before calling it. */
+  surpriseThreshold?: number;
 }
 
 /**
@@ -55,6 +77,7 @@ export function computeDraftSignals(
   if (detail.positionRun !== undefined) signals.positionRun = detail.positionRun;
   if (detail.isStack !== undefined) signals.isStack = detail.isStack;
   if (detail.fellBelowRank !== undefined) signals.fellBelowRank = detail.fellBelowRank;
+  if (detail.reachedAboveRank !== undefined) signals.reachedAboveRank = detail.reachedAboveRank;
   return signals;
 }
 
@@ -85,10 +108,12 @@ export function computeDraftSignalDetail(
     detail.stackWith = stack;
   }
 
-  const fall = detectFall(pick, players, opts);
-  if (fall) {
-    detail.fellBelowRank = fall.fellBelowRank;
-    detail.expectedRank = fall.expectedRank;
+  const surprise = detectSurprise(pick, players, opts);
+  if (surprise) {
+    if (surprise.fellBelowRank !== undefined) detail.fellBelowRank = surprise.fellBelowRank;
+    if (surprise.reachedAboveRank !== undefined) detail.reachedAboveRank = surprise.reachedAboveRank;
+    detail.expectedRank = surprise.expectedRank;
+    detail.surpriseThreshold = surprise.threshold;
   }
 
   return detail;
@@ -144,27 +169,44 @@ function detectStack(pick: Pick, before: readonly Pick[]): string[] {
     .map((prior) => prior.playerName);
 }
 
-interface Fall {
-  fellBelowRank: number;
+interface Surprise {
+  fellBelowRank?: number;
+  reachedAboveRank?: number;
   expectedRank: number;
+  threshold: number;
 }
 
 /**
- * An obvious fall exists when the player's Sleeper `search_rank` is far ahead of
- * the pick number he actually went at. No `search_rank`, no claim.
+ * Compare where a player actually went against Sleeper's `search_rank`, which is
+ * the closest thing the public API exposes to an average draft position.
+ *
+ * The comparison is symmetric: going far LATER than his rank is a fall, going
+ * far EARLIER is a reach. Both are things a group chat notices, and a reach is
+ * usually the funnier of the two because somebody has to defend it.
+ *
+ * `search_rank` reflects the CURRENT season only. That is exactly what a draft
+ * signal wants, and it is why this is never used to grade past seasons: a player
+ * who busted last year carries a depressed rank this year, so scoring history
+ * against it would quietly cancel the very disappointment worth talking about.
+ *
+ * No `search_rank`, no claim.
  */
-function detectFall(
+function detectSurprise(
   pick: Pick,
   players: Record<string, SleeperPlayer>,
   opts: Required<DraftSignalOptions>,
-): Fall | null {
+): Surprise | null {
   const rank = players[pick.playerId]?.search_rank;
   if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0) return null;
   // Sleeper parks unranked players at absurd sentinel ranks; those are not falls.
   if (rank > 10000) return null;
-  const fellBelowRank = pick.pickNo - rank;
-  if (fellBelowRank < opts.fallThreshold) return null;
-  return { fellBelowRank, expectedRank: rank };
+
+  const threshold = surpriseThreshold(opts);
+  const delta = pick.pickNo - rank;
+
+  if (delta >= threshold) return { fellBelowRank: delta, expectedRank: rank, threshold };
+  if (-delta >= threshold) return { reachedAboveRank: -delta, expectedRank: rank, threshold };
+  return null;
 }
 
 // ---------------------------------------------------------------------------

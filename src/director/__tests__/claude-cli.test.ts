@@ -354,7 +354,7 @@ describe('prompt construction (--dry-run path)', () => {
   it('says so in words when the draft is quiet', async () => {
     const context = await makeContext();
     const user = renderUserPrompt({ ...context, draftSignals: {} });
-    expect(user).toContain('no run, no stack, no notable fall');
+    expect(user).toContain('no run, no stack, no notable reach or fall');
   });
 
   it('describes the signals it does have', async () => {

@@ -599,7 +599,7 @@ export function renderUserPrompt(context: LoungeContext): string {
   const signals = renderSignals(context);
   if (signals.length === 0) {
     lines.push(
-      'Nothing unusual — no run, no stack, no notable fall. This is an ordinary pick, and the Lounge still reacts to it.',
+      'Nothing unusual — no run, no stack, no notable reach or fall. This is an ordinary pick, and the Lounge still reacts to it.',
     );
   } else {
     lines.push(...signals);
@@ -847,6 +847,14 @@ function renderSignals(context: LoungeContext): string[] {
       expected !== undefined
         ? `- Fall: he was ranked around ${expected} and went at ${context.pick.pickNo} — ${signals.fellBelowRank} picks late.`
         : `- Fall: he went ${signals.fellBelowRank} picks later than his ranking suggested.`,
+    );
+  }
+  if (signals.reachedAboveRank !== undefined) {
+    const expected = detail?.expectedRank;
+    out.push(
+      expected !== undefined
+        ? `- Reach: he was ranked around ${expected} and went at ${context.pick.pickNo} — ${signals.reachedAboveRank} picks early. Somebody has to defend that.`
+        : `- Reach: he went ${signals.reachedAboveRank} picks earlier than his ranking suggested.`,
     );
   }
   return out;
