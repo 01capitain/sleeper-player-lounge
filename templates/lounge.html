@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Players Lounge</title>
+<!--
+  Players Lounge render target — 1080x1920 master canvas.
+
+  Opened directly from disk by the Playwright driver (file:// URL). Everything
+  it needs sits next to it: lounge.css and render.js. No network, no fonts,
+  no images, no bundler.
+
+  Driver flow:
+    await page.waitForFunction(() => window.LOUNGE && window.LOUNGE.ready)
+    // PNG:   LOUNGE.render(payload)  -> screenshot #stage
+    // video: LOUNGE.reset(payload)
+    //        LOUNGE.showTyping(id) / LOUNGE.hideTyping()
+    //        LOUNGE.revealNext() per beat, wait >=200ms for the 150ms transition
+
+  NOTE: preview.html mirrors this skeleton verbatim (plus sample data).
+  Keep the two in sync if the structure changes.
+-->
+<link rel="stylesheet" href="lounge.css">
+</head>
+<body>
+
+<div id="stage">
+
+  <header class="lounge-header">
+    <div class="lounge-badge" aria-hidden="true">PL</div>
+    <div class="lounge-id">
+      <h1 class="lounge-title" id="lounge-title">Players Lounge</h1>
+      <div class="lounge-sub">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="lounge-sub-text">members · draft night</span>
+      </div>
+    </div>
+    <div class="parody-pill">Parody</div>
+  </header>
+
+  <main id="scroll">
+    <div class="thread">
+
+      <!-- a) previous Lounge messages, dimmed -->
+      <div id="previous"></div>
+
+      <!-- b) centered draft status card -->
+      <div id="status"></div>
+
+      <!-- c) the new reaction bubbles -->
+      <div id="reactions"></div>
+
+      <!-- typing indicator -->
+      <div class="row is-hidden" id="typing">
+        <div id="typing-avatar"></div>
+        <div class="typing-bubble" aria-label="typing">
+          <i></i><i></i><i></i>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <div class="watermark">
+    <span id="watermark-text">Players Lounge • Fantasy parody</span>
+  </div>
+
+</div>
+
+<script src="render.js"></script>
+</body>
+</html>

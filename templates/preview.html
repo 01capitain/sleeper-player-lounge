@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Players Lounge — preview</title>
+<!--
+  Design preview. Open this file directly in a browser — no server, no network.
+  Mirrors the lounge.html skeleton verbatim and injects sample data.
+
+  The sample deliberately doubles as a stress test:
+    - no headshotUrl anywhere, so every avatar exercises the monogram fallback
+    - one 280-character message (Kyle Pitts) at the layout limit
+    - one long hyphenated speaker name (Amon-Ra St. Brown)
+  Sample pick is real: Defensive Bros 2026 draft, round 9, pick 119, Travis Kelce.
+-->
+<link rel="stylesheet" href="lounge.css">
+<style>
+  /* Preview chrome only — never part of the render target. */
+  body { background:#0b0d10; margin:0; padding:40px 0; }
+  #stage { margin:0 auto; box-shadow:0 24px 80px rgba(0,0,0,.6); }
+  .preview-bar {
+    max-width:1080px; margin:0 auto 24px; padding:0 8px;
+    font:600 26px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    color:#7b8595; display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+  }
+  .preview-bar button {
+    font:600 22px/1 inherit; color:#cbd5e1; background:#1a1f27;
+    border:1px solid #2a3038; border-radius:8px; padding:12px 18px; cursor:pointer;
+  }
+  .preview-bar button:hover { background:#232933; }
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Players Lounge — 1080×1920 master canvas</span>
+  <button id="btn-final">Final state</button>
+  <button id="btn-reset">Reset</button>
+  <button id="btn-step">Reveal next</button>
+  <button id="btn-typing">Toggle typing</button>
+</div>
+
+<div id="stage">
+
+  <header class="lounge-header">
+    <div class="lounge-badge" aria-hidden="true">PL</div>
+    <div class="lounge-id">
+      <h1 class="lounge-title" id="lounge-title">Players Lounge</h1>
+      <div class="lounge-sub">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="lounge-sub-text">members · draft night</span>
+      </div>
+    </div>
+    <div class="parody-pill">Parody</div>
+  </header>
+
+  <main id="scroll">
+    <div class="thread">
+      <div id="previous"></div>
+      <div id="status"></div>
+      <div id="reactions"></div>
+      <div class="row is-hidden" id="typing">
+        <div id="typing-avatar"></div>
+        <div class="typing-bubble" aria-label="typing">
+          <i></i><i></i><i></i>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="watermark">
+    <span id="watermark-text">Players Lounge • Fantasy parody</span>
+  </div>
+
+</div>
+
+<script src="render.js"></script>
+<script>
+  var SAMPLE = {
+    pick: {
+      round: 9,
+      pickNo: 119,
+      playerId: "1466",
+      playerName: "Travis Kelce",
+      managerName: "Max"
+    },
+    memberCount: 14,
+    watermark: "Players Lounge • Fantasy parody",
+    previousMessages: [
+      { speakerPlayerId: "9509", speakerName: "Bijan Robinson",
+        text: "second overall, I'll take it" },
+      { speakerPlayerId: "6794", speakerName: "Amon-Ra St. Brown",
+        text: "four receivers gone and I'm still sitting here. noted." },
+      { speakerPlayerId: "4046", speakerName: "Patrick Mahomes",
+        text: "somebody is about to get a steal at tight end" }
+    ],
+    reactions: [
+      { speakerPlayerId: "1466", speakerName: "Travis Kelce", delayMs: 400,
+        teamChip: "KC · TE",
+        text: "ROUND NINE?! Max my guy, this is the bargain of the entire era 😤" },
+      { speakerPlayerId: "4046", speakerName: "Patrick Mahomes", delayMs: 1500,
+        teamChip: "KC · QB",
+        text: "told y'all. congrats Max, you just won the draft" },
+      { speakerPlayerId: "7553", speakerName: "Kyle Pitts", delayMs: 2900,
+        teamChip: "ATL · TE",
+        text: "wild how a tight end going in round nine is a steal but when I go in round six everybody acts like the league personally wronged them. I had a good camp. I'm serious this time. 2026 is different and I'm going to enjoy proving every one of you wrong." },
+      { speakerPlayerId: "96", speakerName: "Aaron Rodgers", delayMs: 4400,
+        teamChip: "PIT · QB",
+        text: "we used to get value like that in the eighth round in Green Bay. nobody blinked." }
+    ]
+  };
+
+  function boot() {
+    if (!window.LOUNGE || !window.LOUNGE.ready) { setTimeout(boot, 20); return; }
+    window.LOUNGE.render(SAMPLE);
+    document.getElementById('btn-final').onclick  = function () { LOUNGE.render(SAMPLE); };
+    document.getElementById('btn-reset').onclick  = function () { LOUNGE.reset(SAMPLE); };
+    document.getElementById('btn-step').onclick   = function () { LOUNGE.revealNext(); };
+    var typing = false;
+    document.getElementById('btn-typing').onclick = function () {
+      typing = !typing;
+      if (typing) LOUNGE.showTyping("1466"); else LOUNGE.hideTyping();
+    };
+  }
+  boot();
+</script>
+</body>
+</html>

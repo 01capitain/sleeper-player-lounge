@@ -1,0 +1,441 @@
+/* ==========================================================================
+   Players Lounge — reaction render template
+   1080 x 1920 master canvas (9:16). Dark theme. No network assets:
+   system font stack only, no CDN, no remote images.
+   Shared by lounge.html (render target) and preview.html (design demo).
+   ========================================================================== */
+
+:root {
+  /* --- palette: "ink plum" base, amber accent ------------------------- */
+  --bg:            #12101a;
+  --bg-glow-a:     rgba(139, 124, 255, 0.14);
+  --bg-glow-b:     rgba(255, 182, 72, 0.08);
+  --surface:       #1b1624;
+  --surface-hi:    #241e2f;
+  --bubble:        #251f31;
+  --bubble-edge:   rgba(255, 255, 255, 0.065);
+  --card:          #1e1828;
+  --card-edge:     rgba(255, 182, 72, 0.28);
+
+  --text:          #f4f1f8;
+  --text-soft:     #c8c0d6;
+  --text-dim:      #948aa6;
+  --text-faint:    rgba(244, 241, 248, 0.34);
+
+  --accent:        #ffb648;
+  --accent-soft:   rgba(255, 182, 72, 0.14);
+  --violet:        #8b7cff;
+
+  --hairline:      rgba(255, 255, 255, 0.07);
+
+  /* --- type scale (at the 1080px master width) ------------------------ */
+  --fs-title:      48px;
+  --fs-sub:        26px;
+  --fs-name:       31px;
+  --fs-body:       36px;   /* never below 30px — must survive downscaling */
+  --fs-chip:       23px;
+  --fs-eyebrow:    26px;
+  --fs-card:       42px;
+  --fs-mark:       25px;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0b0910;
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ==========================================================================
+   Stage — the exact 1080x1920 master canvas
+   ========================================================================== */
+
+#stage {
+  position: relative;
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 900px at 82% -8%,  var(--bg-glow-a), transparent 62%),
+    radial-gradient(1000px 780px at 8% 104%, var(--bg-glow-b), transparent 60%),
+    var(--bg);
+  isolation: isolate;
+}
+
+/* ==========================================================================
+   Header
+   ========================================================================== */
+
+.lounge-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 54px 48px 34px;
+  background: linear-gradient(180deg, rgba(27, 22, 36, 0.96), rgba(27, 22, 36, 0.72));
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+.lounge-badge {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #1a1222;
+  background: linear-gradient(148deg, var(--accent), #ff8f4d 58%, var(--violet));
+  box-shadow: 0 12px 30px rgba(255, 143, 77, 0.22);
+}
+
+.lounge-id { flex: 1 1 auto; min-width: 0; }
+
+.lounge-title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lounge-sub {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-sub);
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+.live-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.14);
+  flex: 0 0 auto;
+}
+
+.parody-pill {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 11px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--card-edge);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Scroll column + thread
+   ========================================================================== */
+
+#scroll {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+#scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.thread {
+  margin-top: auto;              /* keeps newest content pinned to the bottom */
+  padding: 44px 44px 210px;      /* bottom pad clears the watermark scrim */
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+/* thread sections: flat containers, collapsed when empty so the
+   thread gap never produces phantom space */
+#previous,
+#reactions {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+#status {
+  display: flex;
+  justify-content: center;
+}
+#previous:empty,
+#reactions:empty,
+#status:empty { display: none; }
+
+/* ==========================================================================
+   Message row
+   ========================================================================== */
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+  max-width: 100%;
+}
+
+.row.is-hidden { display: none; }
+
+.row.is-entering {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.row {
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+
+/* previous Lounge messages — dimmed above the fold */
+.row.is-past { opacity: 0.4; filter: saturate(0.72); }
+
+.row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 830px;
+}
+
+.row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0 0 10px 6px;
+  min-width: 0;
+}
+
+.speaker {
+  font-size: var(--fs-name);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: hsl(var(--h, 265) 68% 74%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* understated team / position chip */
+.chip {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: var(--fs-chip);
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 4px 11px 5px;
+  background: rgba(255, 255, 255, 0.026);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.bubble {
+  position: relative;
+  background: var(--bubble);
+  border: 1px solid var(--bubble-edge);
+  border-radius: 30px;
+  border-top-left-radius: 10px;   /* asymmetric notch toward the avatar */
+  padding: 26px 32px 28px;
+  font-size: var(--fs-body);
+  line-height: 1.36;
+  color: var(--text);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+  /* long words / 280-char runs must never widen the layout */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* the drafted player's own bubble gets a whisper of accent */
+.row.is-subject .bubble {
+  background: linear-gradient(158deg, #2c2334, #251f31 62%);
+  border-color: rgba(255, 182, 72, 0.22);
+}
+
+/* ==========================================================================
+   Avatar — headshot over a deterministic monogram circle
+   ========================================================================== */
+
+.avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 98px;
+  height: 98px;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    linear-gradient(152deg,
+      hsl(var(--h, 265) 60% 46%),
+      hsl(calc(var(--h, 265) + 26) 56% 29%));
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.11),
+    0 8px 20px rgba(0, 0, 0, 0.32);
+}
+
+.avatar .mono {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 37px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  user-select: none;
+}
+
+/* Sleeper headshots are transparent cutouts: the gradient shows through,
+   so the monogram is hidden whenever a headshot is actually in place. */
+.avatar.has-shot .mono { display: none; }
+
+.avatar .shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 8%;
+  transform: scale(1.16) translateY(4%);
+  display: block;
+}
+
+/* ==========================================================================
+   Draft status card — deliberately NOT a chat bubble
+   ========================================================================== */
+
+.status-card {
+  align-self: center;
+  max-width: 900px;
+  margin: 12px 0 6px;
+  padding: 30px 46px 34px;
+  text-align: center;
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 182, 72, 0.09), rgba(255, 182, 72, 0.02)),
+    var(--card);
+  border: 1px solid var(--card-edge);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+}
+
+.status-eyebrow {
+  font-family: var(--mono);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.status-line {
+  margin-top: 14px;
+  font-size: var(--fs-card);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.status-line .picked { color: var(--accent); }
+
+.status-rule {
+  width: 88px;
+  height: 3px;
+  margin: 22px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--card-edge), transparent);
+}
+
+/* ==========================================================================
+   Typing indicator
+   ========================================================================== */
+
+#typing { align-items: center; }
+#typing.is-hidden { display: none; }
+
+.typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 30px 34px;
+  background: var(--bubble);
+  border: 1px solid var(--bubble-edge);
+  border-radius: 30px;
+  border-top-left-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+}
+
+.typing-bubble i {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: dot 1.25s ease-in-out infinite;
+}
+.typing-bubble i:nth-child(2) { animation-delay: 0.16s; }
+.typing-bubble i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes dot {
+  0%, 60%, 100% { opacity: 0.32; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-7px); }
+}
+
+/* ==========================================================================
+   Watermark — subtle, bottom-anchored, above the scroll column
+   ========================================================================== */
+
+.watermark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 172px;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 40px;
+  background: linear-gradient(to top,
+    rgba(18, 16, 26, 0.97) 22%,
+    rgba(18, 16, 26, 0.72) 58%,
+    rgba(18, 16, 26, 0) 100%);
+}
+
+.watermark span {
+  font-size: var(--fs-mark);
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
