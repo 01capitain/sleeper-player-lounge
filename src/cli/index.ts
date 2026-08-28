@@ -206,7 +206,9 @@ export function buildProgram(): Command {
     .description('Build the desktop draft board — every pick beside the whole Lounge transcript')
     .addHelpText(
       'after',
-      '\nOne self-contained HTML file: no server, no network, safe to move or share.\n' +
+      '\nWrites output/board.html plus a headshots/ folder it references — keep the\n' +
+        'two together. No server and no network, but not a single file: each photo is\n' +
+        'stored once and shared across every scene, which keeps a full board small.\n' +
         'Every pick is listed with its ADP delta; the ones that have a Reaction are\n' +
         'clickable and scroll the transcript to that scene, which can be replayed on the\n' +
         'same beats the MP4 uses. This never calls the Director and never re-renders an\n' +
