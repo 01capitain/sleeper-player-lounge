@@ -18,8 +18,17 @@ import {
 /** A byte string that passes the JPEG magic + minimum size checks. */
 function fakeJpeg(size = 4096): Uint8Array {
   const bytes = new Uint8Array(size).fill(0x41);
-  bytes[0] = 0xff;
-  bytes[1] = 0xd8;
+  bytes.set([0xff, 0xd8, 0xff], 0);
+  return bytes;
+}
+
+/**
+ * A PNG. Sleeper serves headshots from a `.jpg` URL with `content-type:
+ * image/jpeg` but the bytes are frequently PNG, so this must be accepted.
+ */
+function fakePng(size = 4096): Uint8Array {
+  const bytes = new Uint8Array(size).fill(0x41);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
   return bytes;
 }
 
@@ -140,5 +149,30 @@ describe('resolveHeadshots', () => {
     await resolveHeadshots(['../../etc/passwd'], { cacheDir, fetchImage });
     const entries = await fs.readdir(cacheDir);
     expect(entries).toEqual(['.._.._etc_passwd.jpg']);
+  });
+});
+
+
+describe('image format sniffing', () => {
+  it('accepts PNG bytes served from a .jpg URL', async () => {
+    // Regression: Sleeper's headshots are PNG despite the .jpg extension and
+    // the image/jpeg content-type. Checking only the JPEG SOI marker rejected
+    // every real headshot and silently fell back to monogram avatars.
+    const fetchImage: HeadshotFetch = async () => fakePng();
+    const resolved = await resolveHeadshots(['96'], { cacheDir, fetchImage });
+    expect(resolved['96']).toBeDefined();
+  });
+
+  it('still accepts real JPEG bytes', async () => {
+    const fetchImage: HeadshotFetch = async () => fakeJpeg();
+    const resolved = await resolveHeadshots(['1466'], { cacheDir, fetchImage });
+    expect(resolved['1466']).toBeDefined();
+  });
+
+  it('still rejects an HTML error page', async () => {
+    const html = new TextEncoder().encode('<!doctype html>' + 'x'.repeat(4096));
+    const fetchImage: HeadshotFetch = async () => html;
+    const resolved = await resolveHeadshots(['7553'], { cacheDir, fetchImage });
+    expect(resolved['7553']).toBeUndefined();
   });
 });

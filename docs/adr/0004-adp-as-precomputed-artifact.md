@@ -59,3 +59,20 @@ The builder is self-diagnosing: it prints every `adp_*` field found in the paylo
 counts, and refuses to write if the requested field is absent, rather than emitting an empty
 artifact. It also range-checks Josh Allen on every run as a canary against exactly the
 regression that motivated this decision; he currently lands at ADP 33, overall #33.
+
+## Reach and disappointment thresholds
+
+The two directions are not symmetric, because they are not the same event.
+
+**Reach** — taken more than `min(24, adp * 0.5)` picks early. The fraction dominates at the
+top of the board and the 24-pick cap takes over deeper down, so early picks are reached more
+easily: taking the consensus 6th player 4 picks early is a statement, while taking the 200th
+player 4 picks early is noise. A single flat number cannot express that.
+
+**Disappointment** — slid more than **8** picks past his ADP. Players expect to go around
+consensus, and a flat line means the same thing everywhere on the board: nine picks past your
+ranking stings whether you are the 10th player off the board or the 300th. This is the beat
+the drafted player reacts to, so the prompt states it as something he takes personally rather
+than as a neutral statistic.
+
+Both comparisons are strict (`>`), so landing exactly on a threshold is unremarkable.

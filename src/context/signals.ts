@@ -16,33 +16,43 @@ export interface DraftSignalOptions {
   /** N — how many of those must share the position. Default 3. */
   positionRunThreshold?: number;
   /**
-   * How far from his ADP a Pick must land before it is worth
-   * remarking on, expressed in ROUNDS rather than picks.
-   *
-   * A flat pick count means different things in different leagues: 12 picks is
-   * a round and a half in an 8-team league but under a full round in a
-   * 14-team one. Expressing the threshold in rounds keeps "he fell" meaning
-   * the same thing to everyone at the table. Default 1.25 rounds.
+   * Hard cap on how many picks early still counts as ordinary. Default 24.
    */
-  surpriseRounds?: number;
+  reachCapPicks?: number;
   /**
-   * Teams in the league, used to convert `surpriseRounds` into picks.
-   * hotelkit Fantasies is an 8-team league; the simulation draft is 14.
+   * The other half of the reach rule: a fraction of the player's own ADP.
+   * The effective threshold is the LOWER of this and `reachCapPicks`, so early
+   * picks are reached more easily — taking the consensus 6th player 4 picks
+   * early is a statement, while taking the 200th player 4 picks early is noise.
+   * Default 0.5.
    */
-  teams?: number;
+  reachFraction?: number;
+  /**
+   * How many picks past his ADP a player must slide before he is disappointed.
+   * Players expect to go around their ADP; a fixed 8-pick line means the same
+   * thing everywhere on the board. Default 8.
+   */
+  disappointmentPicks?: number;
 }
 
 export const DEFAULT_SIGNAL_OPTIONS: Required<DraftSignalOptions> = {
   positionRunWindow: 5,
   positionRunThreshold: 3,
-  surpriseRounds: 1.25,
-  teams: 12,
+  reachCapPicks: 24,
+  reachFraction: 0.5,
+  disappointmentPicks: 8,
 };
 
-/** Picks of slack allowed before a Pick counts as a fall or a reach. */
-export function surpriseThreshold(opts: Required<DraftSignalOptions>): number {
-  const teams = Number.isFinite(opts.teams) && opts.teams > 0 ? opts.teams : 12;
-  return Math.max(3, Math.round(teams * opts.surpriseRounds));
+/**
+ * How many picks early a player must go before it reads as a reach.
+ *
+ * `min(reachCapPicks, adp * reachFraction)` — the fraction dominates at the top
+ * of the board and the cap takes over deeper down. Taking the consensus 6th
+ * player 4 picks early is a statement; taking the 200th player 4 picks early is
+ * nothing at all.
+ */
+export function reachThreshold(adp: number, opts: Required<DraftSignalOptions>): number {
+  return Math.min(opts.reachCapPicks, adp * opts.reachFraction);
 }
 
 /** A richer read on the same Pick, for callers that want the detail. */
@@ -57,6 +67,8 @@ export interface DraftSignalDetail extends DraftSignals {
   expectedRank?: number;
   /** Picks of slack that were required before calling it. */
   surpriseThreshold?: number;
+  /** True when the player slid past his ADP far enough to be disappointed. */
+  disappointed?: boolean;
 }
 
 /**
@@ -110,7 +122,10 @@ export function computeDraftSignalDetail(
 
   const surprise = detectSurprise(pick, players, opts);
   if (surprise) {
-    if (surprise.fellBelowRank !== undefined) detail.fellBelowRank = surprise.fellBelowRank;
+    if (surprise.fellBelowRank !== undefined) {
+      detail.fellBelowRank = surprise.fellBelowRank;
+      detail.disappointed = true;
+    }
     if (surprise.reachedAboveRank !== undefined) detail.reachedAboveRank = surprise.reachedAboveRank;
     detail.expectedRank = surprise.expectedRank;
     detail.surpriseThreshold = surprise.threshold;
@@ -205,11 +220,20 @@ function detectSurprise(
   // player must produce no claim rather than an enormous fabricated fall.
   if (rank >= 1000) return null;
 
-  const threshold = surpriseThreshold(opts);
   const delta = pick.pickNo - rank;
 
-  if (delta >= threshold) return { fellBelowRank: delta, expectedRank: rank, threshold };
-  if (-delta >= threshold) return { reachedAboveRank: -delta, expectedRank: rank, threshold };
+  // Slid past his ADP: players expect to go around it, so falling more than
+  // `disappointmentPicks` past consensus is something he takes personally.
+  if (delta > opts.disappointmentPicks) {
+    return { fellBelowRank: delta, expectedRank: rank, threshold: opts.disappointmentPicks };
+  }
+
+  // Taken ahead of his ADP.
+  const early = -delta;
+  const threshold = reachThreshold(rank, opts);
+  if (early > threshold) {
+    return { reachedAboveRank: early, expectedRank: rank, threshold };
+  }
   return null;
 }
 

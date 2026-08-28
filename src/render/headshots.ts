@@ -86,7 +86,7 @@ export async function resolveHeadshots(
       }
       if (!allowDownload || failedThisProcess.has(id)) return;
       const bytes = await safeFetch(fetchImage, id);
-      if (!bytes || !looksLikeJpeg(bytes)) {
+      if (!bytes || !looksLikeImage(bytes)) {
         failedThisProcess.add(id);
         return;
       }
@@ -153,9 +153,31 @@ async function writeAtomic(file: string, bytes: Uint8Array): Promise<boolean> {
   }
 }
 
-/** JPEG SOI marker. Guards against caching an HTML error page as `.jpg`. */
-function looksLikeJpeg(bytes: Uint8Array): boolean {
-  return bytes.length >= MIN_IMAGE_BYTES && bytes[0] === 0xff && bytes[1] === 0xd8;
+/**
+ * Magic-byte check, guarding against caching an HTML error page as an image.
+ *
+ * Sleeper serves headshots from a `.jpg` URL with `content-type: image/jpeg`
+ * but the bytes are frequently **PNG** (`89 50 4E 47`). Checking only the JPEG
+ * SOI marker silently rejected every real headshot and fell back to monograms,
+ * so accept any format Chromium will render — it sniffs content, not extension.
+ */
+function looksLikeImage(bytes: Uint8Array): boolean {
+  if (bytes.length < MIN_IMAGE_BYTES) return false;
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) return true;
+  // GIF87a / GIF89a
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return true;
+  // WebP: "RIFF" .... "WEBP"
+  if (
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) return true;
+  return false;
 }
 
 function sanitizeId(id: string): string {

@@ -111,57 +111,84 @@ describe('quiet picks', () => {
   });
 });
 
-describe('draft surprise is symmetric and league-relative', () => {
-  const players = makePlayers([
-    { player_id: 'star', full_name: 'Falling Star', position: 'WR', adp: 10 },
-    { player_id: 'guy', full_name: 'Reached Guy', position: 'WR', adp: 90 },
+describe('reach and disappointment thresholds', () => {
+  // reach  when picked more than min(24, adp * 0.5) picks early
+  // fall    when picked more than 8 picks after his ADP
+  const board = makePlayers([
+    { player_id: 'elite', full_name: 'Elite Guy', position: 'WR', adp: 10 },
+    { player_id: 'mid', full_name: 'Mid Guy', position: 'WR', adp: 40 },
+    { player_id: 'deep', full_name: 'Deep Guy', position: 'WR', adp: 100 },
   ]);
+  const at = (playerId: string, pickNo: number) =>
+    computeDraftSignals(makePick({ pickNo, playerId, position: 'WR' }), [], board);
 
-  it('reports a reach when a player goes far ahead of his ADP', () => {
-    // rank 90, taken at 60 => 30 picks early, well past a 14-team threshold of 18.
-    const pick = makePick({ pickNo: 60, playerId: 'guy', position: 'WR' });
-    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
-    expect(signals.reachedAboveRank).toBe(30);
-    expect(signals.fellBelowRank).toBeUndefined();
+  describe('reach — the fraction dominates at the top of the board', () => {
+    it('flags an elite player taken 6 early (threshold is 5, not 24)', () => {
+      // adp 10 -> min(24, 5) = 5
+      expect(at('elite', 4).reachedAboveRank).toBe(6);
+    });
+
+    it('leaves the same player alone 4 picks early', () => {
+      expect(at('elite', 6).reachedAboveRank).toBeUndefined();
+    });
+
+    it('uses the exact boundary strictly — 5 early is not yet a reach', () => {
+      expect(at('elite', 5).reachedAboveRank).toBeUndefined();
+    });
   });
 
-  it('still reports a fall when a player slides past his ADP', () => {
-    const pick = makePick({ pickNo: 45, playerId: 'star', position: 'WR' });
-    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
-    expect(signals.fellBelowRank).toBe(35);
-    expect(signals.reachedAboveRank).toBeUndefined();
+  describe('reach — the 24-pick cap takes over deeper down', () => {
+    it('flags a deep player taken 30 early (cap 24 beats the fraction 50)', () => {
+      expect(at('deep', 70).reachedAboveRank).toBe(30);
+    });
+
+    it('leaves the same player alone 20 picks early', () => {
+      expect(at('deep', 80).reachedAboveRank).toBeUndefined();
+    });
+
+    it('picks whichever threshold is lower at the crossover', () => {
+      // adp 40 -> min(24, 20) = 20, so the fraction still wins here
+      expect(at('mid', 19).reachedAboveRank).toBe(21);
+      expect(at('mid', 21).reachedAboveRank).toBeUndefined();
+    });
   });
 
-  it('says nothing when the pick lands near his ADP', () => {
-    const pick = makePick({ pickNo: 14, playerId: 'star', position: 'WR' });
-    const signals = computeDraftSignals(pick, [], players, { teams: 14 });
-    expect(signals.fellBelowRank).toBeUndefined();
-    expect(signals.reachedAboveRank).toBeUndefined();
+  describe('disappointment — a flat 8 picks past consensus', () => {
+    it('is disappointed 9 picks after his ADP', () => {
+      const s = at('mid', 49);
+      expect(s.fellBelowRank).toBe(9);
+      expect(s.reachedAboveRank).toBeUndefined();
+    });
+
+    it('is not disappointed at exactly 8 picks past', () => {
+      expect(at('mid', 48).fellBelowRank).toBeUndefined();
+    });
+
+    it('applies the same 8-pick line everywhere on the board', () => {
+      expect(at('elite', 19).fellBelowRank).toBe(9);
+      expect(at('deep', 109).fellBelowRank).toBe(9);
+    });
+
+    it('marks him disappointed in the detail', () => {
+      const d = computeDraftSignalDetail(
+        makePick({ pickNo: 49, playerId: 'mid', position: 'WR' }), [], board,
+      );
+      expect(d.disappointed).toBe(true);
+      expect(d.expectedRank).toBe(40);
+      expect(d.surpriseThreshold).toBe(8);
+    });
   });
 
-  it('scales the threshold with league size, so 8-team and 14-team differ', () => {
-    // rank 10, taken at 22 => 12 picks late.
-    const pick = makePick({ pickNo: 22, playerId: 'star', position: 'WR' });
-
-    // 8-team league: threshold = round(8 * 1.25) = 10, so 12 picks IS a fall.
-    expect(computeDraftSignals(pick, [], players, { teams: 8 }).fellBelowRank).toBe(12);
-
-    // 14-team league: threshold = round(14 * 1.25) = 18, so the same 12 picks is not.
-    expect(computeDraftSignals(pick, [], players, { teams: 14 }).fellBelowRank).toBeUndefined();
-  });
-
-  it('exposes the rank and threshold it judged against', () => {
-    const pick = makePick({ pickNo: 60, playerId: 'guy', position: 'WR' });
-    const detail = computeDraftSignalDetail(pick, [], players, { teams: 8 });
-    expect(detail.expectedRank).toBe(90);
-    expect(detail.surpriseThreshold).toBe(10);
+  it('says nothing when the pick lands on his ADP', () => {
+    const s = at('mid', 40);
+    expect(s.fellBelowRank).toBeUndefined();
+    expect(s.reachedAboveRank).toBeUndefined();
   });
 
   it('makes no claim when the player has no ADP', () => {
     const noRank = makePlayers([{ player_id: 'ghost', position: 'WR' }]);
-    const pick = makePick({ pickNo: 200, playerId: 'ghost', position: 'WR' });
-    const signals = computeDraftSignals(pick, [], noRank, { teams: 8 });
-    expect(signals.fellBelowRank).toBeUndefined();
-    expect(signals.reachedAboveRank).toBeUndefined();
+    const s = computeDraftSignals(makePick({ pickNo: 200, playerId: 'ghost', position: 'WR' }), [], noRank);
+    expect(s.fellBelowRank).toBeUndefined();
+    expect(s.reachedAboveRank).toBeUndefined();
   });
 });

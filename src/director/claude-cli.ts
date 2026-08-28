@@ -845,16 +845,16 @@ function renderSignals(context: LoungeContext): string[] {
     const expected = detail?.expectedRank;
     out.push(
       expected !== undefined
-        ? `- Fall: he was ranked around ${expected} and went at ${context.pick.pickNo} — ${signals.fellBelowRank} picks late.`
-        : `- Fall: he went ${signals.fellBelowRank} picks later than his ranking suggested.`,
+        ? `- Slide: consensus had him around ${expected} and he went at ${context.pick.pickNo} — ${signals.fellBelowRank} picks late. Players expect to go near their ranking, so he is taking this personally.`
+        : `- Slide: he went ${signals.fellBelowRank} picks later than consensus. He is taking it personally.`,
     );
   }
   if (signals.reachedAboveRank !== undefined) {
     const expected = detail?.expectedRank;
     out.push(
       expected !== undefined
-        ? `- Reach: he was ranked around ${expected} and went at ${context.pick.pickNo} — ${signals.reachedAboveRank} picks early. Somebody has to defend that.`
-        : `- Reach: he went ${signals.reachedAboveRank} picks earlier than his ranking suggested.`,
+        ? `- Reach: consensus had him around ${expected} and he went at ${context.pick.pickNo} — ${signals.reachedAboveRank} picks early. Somebody has to defend that.`
+        : `- Reach: he went ${signals.reachedAboveRank} picks earlier than consensus. Somebody has to defend that.`,
     );
   }
   return out;

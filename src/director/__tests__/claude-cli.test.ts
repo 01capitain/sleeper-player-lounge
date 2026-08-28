@@ -365,7 +365,7 @@ describe('prompt construction (--dry-run path)', () => {
     });
     expect(user).toContain('Position run');
     expect(user).toContain('Stack');
-    expect(user).toContain('Fall');
+    expect(user).toContain('Slide');
   });
 
   it('carries the running jokes and the recent transcript', async () => {
