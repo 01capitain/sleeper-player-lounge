@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { displayName, ensurePlayerCache, positionRivals, teammatesOf } from '../players.js';
 import { player, playerIndex, testClient } from './fixtures.js';
+import type { SleeperPlayer } from '../../types.js';
 
 describe('displayName', () => {
   it('prefers full_name', () => {
@@ -99,5 +100,33 @@ describe('ensurePlayerCache', () => {
     await ensurePlayerCache(client);
 
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('retired players are not current teammates', () => {
+  // Regression: Sleeper reports Ben Roethlisberger as active:true, status:"Active",
+  // team:"PIT" years after he retired, so he appeared in the Lounge as one of
+  // Aaron Rodgers' current Steelers teammates. `active` cannot be trusted;
+  // `depth_chart_order` is the signal that actually tracks the roster.
+  function steelers(): Record<string, SleeperPlayer> {
+    const entries = [
+      player({ player_id: '96', full_name: 'Aaron Rodgers', position: 'QB', team: 'PIT', depth_chart_order: 1, search_rank: 195 }),
+      player({ player_id: '138', full_name: 'Ben Roethlisberger', position: 'QB', team: 'PIT', depth_chart_order: null, search_rank: 176 }),
+      player({ player_id: '9999', full_name: 'Mason Rudolph', position: 'QB', team: 'PIT', depth_chart_order: 2 }),
+      player({ player_id: '8888', full_name: 'Just Signed', position: 'WR', team: 'PIT', depth_chart_order: null, adp: 210 }),
+    ];
+    return Object.fromEntries(entries.map((e) => [e.player_id, e]));
+  }
+
+  it('excludes a retired player Sleeper still flags active', () => {
+    expect(teammatesOf('96', steelers()).map((m) => m.name)).not.toContain('Ben Roethlisberger');
+  });
+
+  it('keeps players who are on the depth chart', () => {
+    expect(teammatesOf('96', steelers()).map((m) => m.name)).toContain('Mason Rudolph');
+  });
+
+  it('keeps a fantasy-relevant player with an ADP but no depth chart entry yet', () => {
+    expect(teammatesOf('96', steelers()).map((m) => m.name)).toContain('Just Signed');
   });
 });

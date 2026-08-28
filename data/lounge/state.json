@@ -1,15 +1,17 @@
 {
-  "season": 2026,
-  "lastProcessedPickNo": 0,
+  "activeRivalries": [],
   "activeRunningJokes": [
     {
       "id": "kyle-pitts-draft-bust",
-      "topic": "Kyle Pitts is remembered by the hotelkit Fantasies league as a great draft bust.",
-      "strength": 1.0,
-      "participants": ["kyle_pitts"],
-      "persistent": true
+      "participants": [
+        "kyle_pitts"
+      ],
+      "persistent": true,
+      "strength": 1,
+      "topic": "Kyle Pitts is remembered by the hotelkit Fantasies league as a great draft bust."
     }
   ],
-  "activeRivalries": [],
-  "recentTone": "pre_draft"
+  "lastProcessedPickNo": 119,
+  "recentTone": "pre_draft",
+  "season": 2026
 }

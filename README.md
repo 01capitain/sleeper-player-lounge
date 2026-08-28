@@ -17,29 +17,81 @@ Sleeper API → pick detector → Context builder → Director (claude -p) → R
 The LLM is **not** the memory. Local files are. Every fact a player is allowed to reference
 must be present in the Context assembled for that pick; anything absent cannot be said.
 
-## Setup
+## Run it
 
 ```bash
 npm install
 npx playwright install chromium
-npm run lounge -- setup
+npm run demo
 ```
 
-`setup` discovers your 2026 leagues, picks a completed draft to simulate against, caches the
-Sleeper player dataset and normalizes the picks. No API key is needed — Sleeper's read API is
-public, and the Director runs through your existing Claude Code authentication.
+That is the whole thing. `demo` runs `setup` for you if it has never run, picks a draft
+pick worth looking at (Kyle Pitts, Travis Kelce or Aaron Rodgers — it says which and why),
+generates the scene, renders a PNG in about three seconds, prints the dialogue and opens
+the image.
+
+No API key is needed. Sleeper's read API is public, and the Director runs through your
+existing Claude Code authentication.
+
+```bash
+npm run demo -- --stub --no-open    # free: no LLM call, no window
+npm run demo -- --pick 229          # Aaron Rodgers, 82 picks past his ADP
+npm run demo -- --format mp4        # the animated version instead
+```
 
 ## Commands
 
+Everything below is `npm run lounge -- <command>`. Add `--verbose` to any of them for
+debug logging on stderr; stdout only ever carries content, so piping it is safe.
+
+| Command | What it does |
+|---|---|
+| `demo` | The one to run first. Sets up, directs one scene, renders it, opens it. |
+| `setup` | Discover leagues, select the Simulation draft, cache players, normalize picks. |
+| `simulate` | Replay stored Picks through the full pipeline. |
+| `react` | Re-render an existing Reaction in another format. Never calls the Director. |
+| `screenshot` | `react --format png`. |
+| `watch` | Poll the live slow draft and process new Picks as they land. |
+| `history import` | Build Fantasy Memory: 2025 rosters and championship rosters. |
+
 ```bash
-npm run lounge -- simulate --next              # next stored pick through the full pipeline
-npm run lounge -- simulate --pick 74           # a specific pick (74 = Kyle Pitts)
-npm run lounge -- react --latest --format mp4
-npm run lounge -- react --latest --format gif
+npm run demo                                     # start here
+
+npm run lounge -- setup                          # --force to bypass every cache
+npm run lounge -- simulate --next                # next pick after the last processed one
+npm run lounge -- simulate --pick 74             # 74 = Kyle Pitts
+npm run lounge -- simulate --all --limit 5       # batch; shares one chromium
+npm run lounge -- simulate --next --alias        # map draft slots onto hotelkit managers
+npm run lounge -- simulate --next --no-render    # generate and persist only
+
+npm run lounge -- react --latest --format mp4    # free — no Director call
+npm run lounge -- react --pick 74 --format gif
 npm run lounge -- screenshot --latest
-npm run lounge -- history import               # 2025 rosters + championship membership
-npm run lounge -- watch                        # poll the live slow draft
+
+npm run lounge -- watch                          # poll every 25s until Ctrl-C
+npm run lounge -- watch --once                   # one poll, then exit
+npm run lounge -- watch --league <id> --interval 30
+
+npm run lounge -- history import                 # the Simulation league chain
+npm run lounge -- history import --target        # hotelkit Fantasies instead
+npm run lounge -- history import --league <id>
 ```
+
+### `--stub` costs nothing
+
+`demo`, `simulate` and `watch` all accept `--stub`, which swaps the `claude -p` Director for
+a deterministic canned one. Same pipeline, same renderer, same files on disk, no LLM call and
+no cost. It is how the test suite exercises the pipeline, and it is the right way to check a
+render change.
+
+### Watching a live draft
+
+`watch` compares the draft against `state.lastProcessedPickNo` and processes anything new in
+ascending **pick number** — Sleeper picks carry no timestamp, so there is no arrival order to
+sort by. Every Pick is deduped by its `eventId` (`{draftId}:{pickNo}:{playerId}`), which is
+recorded on disk, so restarting the watcher never re-reacts to a pick. A `pre_draft` league is
+not an error: the watcher says so and waits. Ctrl-C finishes the pick in flight, closes
+chromium and exits cleanly.
 
 ## Documentation
 

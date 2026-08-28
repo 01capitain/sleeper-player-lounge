@@ -285,6 +285,10 @@ export function player(
 ): SleeperPlayer {
   return {
     active: true,
+    // Fixture players are on a roster by default; `isCastable` requires a depth
+    // chart entry (or an ADP) because Sleeper's `active` flag stays true for
+    // retired players. Override with `depth_chart_order: null` to model one.
+    depth_chart_order: 1,
     team: null,
     position: null,
     first_name: null,

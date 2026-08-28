@@ -80,14 +80,31 @@ export function displayName(player: SleeperPlayer | null | undefined): string {
   return player.player_id ?? '';
 }
 
-/** True for a player who is currently rostered somewhere and not flagged inactive. */
+/**
+ * True for a player who is actually on an NFL roster right now.
+ *
+ * `active` and `status` CANNOT be trusted for this. Sleeper still reports Ben
+ * Roethlisberger as `active: true, status: 'Active', team: 'PIT'` years after he
+ * retired, which put him in the Lounge as one of Aaron Rodgers' current Steelers
+ * teammates. Retired players linger in the dataset with their last team intact.
+ *
+ * `depth_chart_order` is the reliable signal: it is populated only for players on
+ * the current depth chart (52 of 102 PIT entries — about a real 53-man roster),
+ * and is null for Roethlisberger, Haskins and other departed players whose
+ * `news_updated` is frozen years in the past. A present ADP is accepted as a
+ * second route in, so a just-signed fantasy-relevant player is not excluded
+ * while the depth chart catches up.
+ */
 function isCastable(player: SleeperPlayer | undefined): player is SleeperPlayer {
   if (!player) return false;
   // Free agents carry `team: null`. They are excluded deliberately: a Speaker
   // with no team cannot be anyone's current NFL teammate or on-field rival.
   if (player.team === null || player.team === undefined || player.team === '') return false;
   if (player.active === false) return false;
-  return true;
+  const onDepthChart =
+    typeof player.depth_chart_order === 'number' && Number.isFinite(player.depth_chart_order);
+  const hasAdp = typeof player.adp === 'number' && Number.isFinite(player.adp);
+  return onDepthChart || hasAdp;
 }
 
 /** Better-known players first. Sleeper's `search_rank` is ascending; null sorts last. */
@@ -100,8 +117,9 @@ function byProminence(a: SleeperPlayer, b: SleeperPlayer): number {
 
 /**
  * Current NFL teammates of `playerId`: same `team`, excluding the player
- * himself, players Sleeper flags inactive, and anyone with `team === null`
- * (free agents). Ordered by prominence so callers can take the first few.
+ * himself, anyone with `team === null` (free agents), and anyone no longer on a
+ * roster — see `isCastable`, which does NOT trust Sleeper's `active` flag.
+ * Ordered by prominence so callers can take the first few.
  *
  * Returns `[]` when the player is unknown or has no team.
  */

@@ -352,6 +352,12 @@ export interface SleeperPlayer {
    * Absent means UNRANKED, never "very late".
    */
   adp?: number;
+  /**
+   * Position on the team's current depth chart. Null for players no longer on a
+   * roster — the only trustworthy "is he still on the team" signal, since
+   * `active` and `status` stay true for retired players.
+   */
+  depth_chart_order?: number | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -93,6 +93,10 @@ export function makePlayers(
       team: entry.team ?? null,
       active: entry.active ?? true,
       search_rank: entry.search_rank ?? null,
+      // Fixture players are on a roster by default; `isCastable` requires a
+      // depth chart entry because Sleeper's `active` flag stays true for
+      // retired players. Pass `depth_chart_order: null` to model one.
+      depth_chart_order: entry.depth_chart_order ?? 1,
       ...(entry.adp !== undefined ? { adp: entry.adp } : {}),
       ...entry,
     };

@@ -96,14 +96,37 @@ export type DirectorSpawn = (
 ) => Promise<DirectorSpawnResult>;
 
 const defaultSpawn: DirectorSpawn = async (file, args, options) => {
-  const { stdout, stderr } = await execFileAsync(file, [...args], {
+  const pending = execFileAsync(file, [...args], {
     timeout: options.timeoutMs,
     cwd: options.cwd,
     maxBuffer: options.maxBuffer,
     encoding: 'utf8',
   });
+  // The prompt travels in argv, so there is nothing to send on stdin. Leaving it
+  // open makes the CLI wait three seconds for input that never arrives, on every
+  // single pick. `execFile` has no stdio option, so close the pipe by hand.
+  pending.child.stdin?.end();
+  const { stdout, stderr } = await pending;
   return { stdout, stderr };
 };
+
+/**
+ * The Reaction schema as `--json-schema` will accept it.
+ *
+ * `schemas/reaction.schema.json` declares `"$schema": ".../draft/2020-12/schema"`
+ * for our own ajv validation, but the CLI's structured-output validator cannot
+ * resolve that meta-schema ref and rejects the whole thing:
+ *   `--json-schema is not a valid JSON Schema: no schema with key or ref ...`
+ * `$schema` is metadata about the schema rather than a constraint on the value,
+ * so dropping it changes nothing we enforce — and every constraint is re-checked
+ * locally by `validateReaction` regardless. `title` is kept: it is harmless and
+ * names the structured output in the CLI's own error messages.
+ */
+export function structuredOutputSchema(schemaFile: string): string {
+  const parsed: Record<string, unknown> = JSON.parse(readFileSync(schemaFile, 'utf8'));
+  delete parsed['$schema'];
+  return JSON.stringify(parsed);
+}
 
 // ---------------------------------------------------------------------------
 // Errors and telemetry
@@ -207,7 +230,7 @@ export class ClaudeCliDirector implements LoungeDirector {
 
   /** The exact argv handed to `execFile`. Exposed so `--dry-run` can print it. */
   buildArgs(userPrompt: string): string[] {
-    const schemaJson = readFileSync(this.schemaFile, 'utf8');
+    const schemaJson = structuredOutputSchema(this.schemaFile);
     return [
       '-p',
       userPrompt,

@@ -2,12 +2,13 @@
   "name": "sleeper-player-lounge",
   "version": "0.1.0",
   "private": true,
-  "description": "Players Lounge — a local-first companion that turns Sleeper draft picks into fictional NFL group-chat scenes.",
+  "description": "Players Lounge \u2014 a local-first companion that turns Sleeper draft picks into fictional NFL group-chat scenes.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
+    "demo": "tsx src/cli/index.ts demo",
     "lounge": "tsx src/cli/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
