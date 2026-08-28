@@ -187,6 +187,8 @@ export interface RenderVideoOptions
   settleMs?: number;
   /** Keep the frame directory for debugging instead of deleting it. */
   keepFrames?: boolean;
+  /** ffmpeg binary. Defaults to `LOUNGE_FFMPEG`, then `ffmpeg` on PATH. */
+  ffmpegPath?: string;
 }
 
 /** Default GIF width — 1080px GIFs are unshareable. */
@@ -203,7 +205,7 @@ export async function renderVideo(
 ): Promise<string> {
   const format: VideoFormat = opts.format ?? 'mp4';
   const fps = Math.max(1, Math.round(opts.fps ?? DEFAULT_FPS));
-  const ffmpeg = await resolveFfmpeg();
+  const ffmpeg = await resolveFfmpeg(opts.ffmpegPath);
 
   const payload = await preparePayload(reaction, opts);
   const timelineOptions = await resolveTimelineOptions(opts);
@@ -324,8 +326,8 @@ export async function hasFfmpeg(env: NodeJS.ProcessEnv = process.env): Promise<b
   }
 }
 
-async function resolveFfmpeg(env: NodeJS.ProcessEnv = process.env): Promise<string> {
-  const binary = ffmpegBinary(env);
+async function resolveFfmpeg(override?: string): Promise<string> {
+  const binary = override?.trim() || ffmpegBinary();
   try {
     await run(binary, ['-version']);
     return binary;
