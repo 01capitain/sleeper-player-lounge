@@ -1,0 +1,38 @@
+{
+  "championshipRosters": {
+    "2025": {
+      "leagueId": "1250143800488120320",
+      "managerId": "1253837548522844160",
+      "managerName": "RadebergBearTheater",
+      "playerIds": [
+        "10880",
+        "11533",
+        "11632",
+        "11685",
+        "11792",
+        "1466",
+        "4098",
+        "421",
+        "5859",
+        "6151",
+        "6786",
+        "6790",
+        "7567",
+        "8111",
+        "8126",
+        "8132",
+        "8676",
+        "9504",
+        "PHI"
+      ],
+      "season": 2025
+    }
+  },
+  "generatedAt": "2026-08-28T17:56:26.728Z",
+  "rules": {
+    "description": "Roster history before 2025 is otherwise irrelevant. A player may remember any older season only if he was on that season's winning fantasy roster.",
+    "explicitSeasonMentionRequired": true,
+    "onlyLongTermRosterMemory": "championship_membership",
+    "preserveAllAvailableSeasons": true
+  }
+}
