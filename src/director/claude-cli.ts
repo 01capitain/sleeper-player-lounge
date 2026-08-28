@@ -461,8 +461,32 @@ export function productRuleViolations(
     violations.push(`eventId "${reaction.eventId}" does not match the pick "${context.pick.eventId}"`);
   }
 
+  // The Season Literal rule. A message that leans on Fantasy Memory must name
+  // the season as a four-digit year, so managers know which one is meant —
+  // "You had me in 2025" is legible, "back together again" is not.
+  //
+  // Measured over 36 real Reactions, 42 of 43 history lines named their season
+  // unprompted. The exception ("New team, new manager, new me.") is exactly the
+  // vague form the rule exists to forbid, so it is enforced here rather than
+  // left to the prompt.
+  for (const message of messages) {
+    const leansOnHistory =
+      (message.historyRefs?.length ?? 0) > 0 ||
+      message.reason === 'fantasy_2025_history' ||
+      message.reason === 'championship_history';
+    if (leansOnHistory && !SEASON_LITERAL.test(message.text)) {
+      violations.push(
+        `"${message.speakerName}" refers to fantasy history without naming the season: ` +
+          `"${message.text}" — any history reference must state the four-digit year`,
+      );
+    }
+  }
+
   return violations;
 }
+
+/** A four-digit season, e.g. `2025`. */
+const SEASON_LITERAL = /\b(?:19|20)\d{2}\b/;
 
 /** Everyone the Context admits to the room, by id and by normalized name. */
 export function allowedSpeakers(context: LoungeContext): {

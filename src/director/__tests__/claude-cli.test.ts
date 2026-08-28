@@ -278,6 +278,39 @@ describe('validation and the single retry', () => {
     await expect(director.generateReaction(context)).rejects.toThrow(/not present in the context/);
   });
 
+  it('rejects a history reference that does not name its season', async () => {
+    // The Season Literal rule. Measured over 36 real Reactions, 42 of 43 history
+    // lines named the season unprompted; the one that did not read "New team,
+    // new manager, new me." — exactly the vague form the rule forbids.
+    const context = await makeContext();
+    const vague = validReaction(context);
+    const first = vague.reactions[0] as { text: string; historyRefs?: string[] };
+    first.text = 'New team, new manager, new me.';
+    first.historyRefs = ['was on this manager roster before'];
+
+    expect(productRuleViolations(vague, context).join(' ')).toMatch(/without naming the season/);
+  });
+
+  it('accepts the same reference once it states the year', async () => {
+    const context = await makeContext();
+    const explicit = validReaction(context);
+    const first = explicit.reactions[0] as { text: string; historyRefs?: string[] };
+    first.text = 'You had me in 2025 and you are really doing this again?';
+    first.historyRefs = ['2025 roster'];
+
+    expect(productRuleViolations(explicit, context)).toEqual([]);
+  });
+
+  it('leaves messages that lean on no history alone', async () => {
+    const context = await makeContext();
+    const plain = validReaction(context);
+    const first = plain.reactions[0] as { text: string; historyRefs?: string[] };
+    first.text = 'Round nine. Understood.';
+    delete first.historyRefs;
+
+    expect(productRuleViolations(plain, context)).toEqual([]);
+  });
+
   it('rejects more than 6 messages, which the model boundary does not enforce', async () => {
     const context = await makeContext();
     const tooMany = validReaction(context);
