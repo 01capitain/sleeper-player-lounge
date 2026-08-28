@@ -76,3 +76,80 @@ is not 1:1 with rosters and must be joined against `/league/{id}/rosters` via `o
 
 Headshots: `https://sleepercdn.com/content/nfl/players/{player_id}.jpg` (transparent cutouts,
 not verified reachable from the sandbox — the renderer must degrade to a monogram avatar).
+
+## Addendum — gaps closed 2026-08-28
+
+Recorded after the first import agent flagged these as reasoned-but-unobserved.
+
+### Draft ordering fields (Defensive Bros 2026 draft)
+
+```
+start_time  1787245270875
+last_picked 1787250468820
+created     1785611027095
+```
+
+All three are present, so the selection precedence `last_picked -> start_time -> created`
+is observed, not assumed. `last_picked` is the only field that means "finished at" — a slow
+draft can start weeks before it ends, so ordering on `start_time` would be wrong.
+
+### `draft_order` semantics — CONFIRMED
+
+Keys are **user_id**, values are the **slot number**:
+
+```json
+{ "1253448521177108480": 1, "1251814728901087232": 2, "1252021942492344320": 3 }
+```
+
+So it is `user_id -> slot`, NOT `slot -> user_id`. Invert it to go from slot to manager.
+Note `slot_to_roster_id` is present on the draft *detail* endpoint (`/draft/{id}`) but not on
+the league's draft *list* endpoint (`/league/{id}/drafts`).
+
+### Pick object shape — CONFIRMED
+
+Top-level keys, complete:
+`draft_id`, `draft_slot`, `is_keeper`, `metadata`, `pick_no`, `picked_by`, `player_id`,
+`reactions`, `roster_id`, `round`
+
+**There is no timestamp on a pick.** `Pick.pickedAt` must stay null/omitted rather than be
+fabricated; the only time-like value is `metadata.news_updated`, which is about the player's
+news feed, not the pick. The live watcher must therefore order by `pick_no`, never by time.
+
+`metadata` is richer than expected and carries what the normalizer needs even without the
+5MB players dataset:
+
+```json
+{
+  "first_name": "Travis", "last_name": "Kelce", "player_id": "1466",
+  "position": "TE", "team": "KC", "status": "Active", "number": "87",
+  "years_exp": "13", "injury_status": "", "news_updated": "1786588814418",
+  "sport": "nfl", "team_abbr": "", "team_changed_at": ""
+}
+```
+
+Verified current NFL metadata for the required Regulars (matches `docs/sources.md`):
+
+| Player | player_id | position | team |
+|---|---|---|---|
+| Aaron Rodgers | 96 | QB | PIT |
+| Travis Kelce | 1466 | TE | KC |
+| Kyle Pitts | 7553 | TE | ATL |
+
+### hotelkit Fantasies 2026 managers — the Manager Alias targets
+
+Eight managers, real ids and names:
+
+| user_id | display_name | team_name |
+|---|---|---|
+| 471439689564286976 | 01capitain | Ja'Marr-io Kart Chase |
+| 871378632227131392 | frearless | The Jolly Rodgers |
+| 871390226608758784 | MWRCorny | Jo-ju Brothers |
+| 871438999288467456 | PiJ | Winless Wonders |
+| 871442069296734208 | bergnermikey | Waddle u doing stepbro |
+| 872389075758452736 | obsti5 | BigTruzz |
+| 872413972094210048 | Genius11 | Nix ist los |
+| 1001524703443415040 | NYJ1000 | *(none — fall back to display_name)* |
+
+Sorted ascending by `user_id` this is the exact order the alias modulo rule walks. Note the
+2025 league had 15 users for 10 rosters while 2026 has 8 — further confirmation that Manager
+identity must be resolved by `user_id` and never by roster or slot.
