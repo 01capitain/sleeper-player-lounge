@@ -209,10 +209,9 @@ export function buildProgram(): Command {
       '\nWrites output/board.html plus a headshots/ folder it references — keep the\n' +
         'two together. No server and no network, but not a single file: each photo is\n' +
         'stored once and shared across every scene, which keeps a full board small.\n' +
-        'Every pick is listed with its ADP delta; the ones that have a Reaction are\n' +
-        'clickable and scroll the transcript to that scene, which can be replayed on the\n' +
-        'same beats the MP4 uses. This never calls the Director and never re-renders an\n' +
-        'export.\n\n' +
+        'Every pick is listed; the ones that have a Reaction jump the transcript to\n' +
+        'that scene when clicked, and it can be replayed on the same beats the MP4\n' +
+        'uses. This never calls the Director and never re-renders an export.\n\n' +
         'Examples:\n' +
         '  npm run lounge -- board --open\n' +
         '  npm run lounge -- board --limit 60          the last 60 picks only\n' +

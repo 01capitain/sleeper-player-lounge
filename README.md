@@ -90,25 +90,34 @@ npm run lounge -- history import --league <id>
 whole draft on a desktop page: the board on the left, the entire Lounge transcript on the
 right.
 
-- **Every pick is listed**, grouped by round, with its position, NFL team, drafting manager
-  and its **ADP delta** — `+30` for a reach, `-52` for a slide, and the word *unranked* when
-  `data/players/adp.json` has no ADP for that player. It never invents a number.
-- **Picks that have a Reaction are marked `Scene`.** Clicking one scrolls the transcript to
-  that pick's announcement and briefly highlights it. Picks with no Reaction are still shown,
-  greyed and inert against the transcript; selecting one tells you the `simulate --pick N` that
-  would direct it.
+- **Every pick is listed**, grouped by round, with its position, NFL team and drafting
+  manager. There is no ADP column: ADP still drives the Director's reach/slide signals, but
+  during a live draft the difference to a preseason average is not what you are looking at.
+- **Picks that have a Reaction are marked `Scene`.** Clicking one selects it *and* jumps the
+  transcript to that pick's announcement, briefly highlighting it. Picks with no Reaction are
+  still shown, greyed and inert against the transcript; selecting one tells you the
+  `simulate --pick N` that would direct it.
+- **The chat says who owns him now.** A speaker the draft has already claimed wears his
+  fantasy manager — `RB · Bark to the Kamara` — instead of his NFL club. A player still on the
+  board keeps the usual `KC · TE`, and a scene never shows an owner from a *later* pick.
+- **Every message is timestamped.** Each scene carries a `28 Aug 2026 · 18:15` header and each
+  bubble an `HH:MM`, read from the Reaction's `createdAt` plus that message's own `delayMs`, so
+  the clock ascends exactly as the animation does. Reactions stored without a `createdAt`
+  simply have no clock.
 - **Replay** re-animates the selected scene on the *same* `buildTimeline()` beats the MP4
   encoder walks, so a rewind shows what an export would produce — down to the announcement
   card's entrance.
 - The selected pick's export command (`npm run lounge -- react --pick N --format mp4`) sits in
   the dock with a copy button.
-- Keyboard: `↑`/`↓` move, `R` replays, `/` focuses the filter. There is also a
-  *Lounge scenes only* toggle.
+- Keyboard: `↑`/`↓` move *without* moving the transcript, `↵` jumps to the selected pick's
+  chat, `R` replays, `/` focuses the filter. There is also a *Lounge scenes only* toggle.
 
 The chat pane is not a re-implementation: `templates/lounge.css` and `templates/render.js` are
 inlined at build time and build the transcript, so it is exactly the renderer the PNG and MP4
 exports drive. **The board changes nothing about those exports** — they remain chat-only,
-1080x1920, one scene per file. Like the `html` format, the page is fully inlined and makes zero
+1080x1920, one scene per file. The owner chip and the per-message clock are opt-in payload
+fields (`pick.teamChip`, `reactions[].timestamp`) that only the board ever sets, so a PNG or
+MP4 is byte-for-byte what it was before either existed. Like the `html` format, the page is fully inlined and makes zero
 network requests, so it can be moved, emailed or shared as-is.
 
 ### `--stub`

@@ -5,10 +5,11 @@
 
    Payload shape:
    {
-     pick: { season, pickNo, round?, playerId?, playerName, managerName },
+     pick: { season, pickNo, round?, playerId?, playerName, managerName,
+             teamChip? },      // opt-in: overrides the announcement plate
      previousMessages: [ { speakerName, speakerPlayerId, text, headshotUrl?, teamChip? } ],
      reactions:        [ { speakerPlayerId, speakerName, text, delayMs,
-                           teamChip?, headshotUrl? } ],
+                           teamChip?, headshotUrl?, timestamp? } ],
      watermark: string,
      memberCount?: number,      // header subline override
      statusLine?: string        // status card 2nd line override
@@ -159,6 +160,10 @@
 
     var chip = chipText(msg.teamChip);
     if (chip) meta.appendChild(el('span', 'chip', chip));
+
+    /* Opt-in clock. Only the desktop board sets `timestamp`; the PNG and MP4
+       payloads never carry it, so an export is untouched by this branch. */
+    if (msg.timestamp) meta.appendChild(el('span', 'time', String(msg.timestamp)));
 
     body.appendChild(meta);
     body.appendChild(el('div', 'bubble', msg.text || ''));
@@ -314,7 +319,12 @@
     if (arriving) card.classList.add('is-arriving');
 
     var subject = state.speakers[String(p.playerId)] || {};
-    var team = teamAbbrev(subject.teamChip);
+    /* `pick.teamChip` is an opt-in override for callers whose reaction rows no
+       longer carry the NFL chip (the desktop board swaps it for the fantasy
+       owner). Absent — which is every export — the subject's own row is read,
+       exactly as before. */
+    var plateChip = p.teamChip ? p.teamChip : subject.teamChip;
+    var team = teamAbbrev(plateChip);
     if (team) card.setAttribute('data-team', team);
 
     /* --- light, behind everything --- */
@@ -358,7 +368,7 @@
     var portrait = el('div', 'announce-portrait');
     portrait.appendChild(
       buildAvatar(p.playerId, p.playerName, subject.headshotUrl).node);
-    var plate = chipText(subject.teamChip);
+    var plate = chipText(plateChip);
     if (plate) portrait.appendChild(el('div', 'announce-team', plate));
     card.appendChild(portrait);
 

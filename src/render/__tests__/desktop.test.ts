@@ -22,19 +22,23 @@ import { pathToFileURL } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { AdpArtifact } from '../../import/adp.js';
 import type { Pick, Reaction } from '../../types.js';
 import {
   anchorIdFor,
   buildBoardHtml,
   buildBoardModel,
-  describeDelta,
   exportCommandFor,
+  formatMessageTime,
+  formatSceneTime,
   generateCommandFor,
+  ownerChipFor,
+  ownershipByPlayer,
   renderBoardHtml,
-  type BoardRow,
   type BuildBoardOptions,
 } from '../desktop.js';
+
+/** A `reactions.jsonl` row: a Reaction plus the moment it was directed. */
+type StoredReaction = Reaction & { createdAt?: string };
 
 /**
  * The tsconfig has no `dom` lib on purpose — this is Node code — so the
@@ -44,12 +48,14 @@ import {
  */
 interface DomRect {
   top: number;
+  width: number;
 }
 interface DomNode {
   id: string;
   textContent: string | null;
   disabled: boolean;
   scrollTop: number;
+  clientHeight: number;
   getAttribute(name: string): string | null;
   getBoundingClientRect(): DomRect;
 }
@@ -63,6 +69,17 @@ interface DomDocument {
 type DomWindow = { document: DomDocument };
 
 const DRAFT_ID = 'sim9001';
+
+/**
+ * Real team names from the league this board is built for. A chip that can
+ * hold "Bark to the Kamara" can hold anything this league will produce.
+ */
+const TEAM_NAMES = [
+  'Bark to the Kamara',
+  'Die Schmerzen der Lämmer',
+  'Tucker forever #9 Goat',
+  'Skunk Works',
+] as const;
 
 /** Real drafts have far more picks than Reactions; the fixture mirrors that. */
 function pick(pickNo: number, overrides: Partial<Pick> = {}): Pick {
@@ -80,7 +97,7 @@ function pick(pickNo: number, overrides: Partial<Pick> = {}): Pick {
     position: 'WR',
     nflTeam: 'KC',
     managerId: `m${((pickNo - 1) % 4) + 1}`,
-    managerName: `Manager ${((pickNo - 1) % 4) + 1}`,
+    managerName: TEAM_NAMES[(pickNo - 1) % TEAM_NAMES.length] as string,
     simulated: true,
     ...overrides,
   };
@@ -109,26 +126,25 @@ function reactionFor(source: Pick, count = 2): Reaction {
 
 const PICKS = Array.from({ length: 12 }, (_, i) => pick(i + 1));
 /** Picks 3 and 9 have scenes; the other ten do not. */
-const REACTIONS = [reactionFor(PICKS[2] as Pick, 3), reactionFor(PICKS[8] as Pick, 2)];
+const REACTIONS: StoredReaction[] = [
+  { ...reactionFor(PICKS[2] as Pick, 3), createdAt: '2026-08-28T18:15:11.039Z' },
+  { ...reactionFor(PICKS[8] as Pick, 2), createdAt: '2026-08-28T20:04:59.000Z' },
+];
 
-const ADP: AdpArtifact = {
-  source: 'test',
-  season: 2026,
-  week: 0,
-  field: 'adp_dd_ppr',
-  unrankedSentinel: 900,
-  generatedAt: '2026-08-01T00:00:00.000Z',
-  rankedCount: 3,
-  // p1 is a reach (ADP 30, taken 1st), p3 is a slide, p5 lands exactly on ADP.
-  adp: { p1: 30, p3: 1, p5: 5 },
-};
+/** Every speaker is a WR on KC unless a test says otherwise. */
+const PLAYER_META = Object.fromEntries(
+  [...PICKS.map((p) => p.playerId), 's1', 's2'].map((id) => [
+    id,
+    { position: 'WR', nflTeam: 'KC' },
+  ]),
+);
 
 /** Everything injected, so no test reads `data/` or reaches the network. */
 function options(extra: BuildBoardOptions = {}): BuildBoardOptions {
   return {
     picks: PICKS,
     reactions: REACTIONS,
-    adp: ADP,
+    playerMeta: PLAYER_META,
     draft: null,
     watermark: 'Players Lounge • Fantasy parody',
     headshotOptions: { download: false },
@@ -191,44 +207,12 @@ describe('the board model', () => {
     expect(model.scenes.map((scene) => scene.pickNo)).toEqual([3, 9]);
   });
 
-  it('signs the ADP delta: positive is a reach, negative is a slide', async () => {
+  it('carries no ADP on a row: the draft room does not care', async () => {
     const model = await buildBoardModel(options());
-    const byPick = new Map(model.rows.map((row) => [row.pickNo, row]));
-    expect(byPick.get(1)).toMatchObject({ adp: 30, adpDelta: 29 });
-    expect(byPick.get(3)).toMatchObject({ adp: 1, adpDelta: -2 });
-    expect(byPick.get(5)).toMatchObject({ adp: 5, adpDelta: 0 });
-  });
-
-  it('leaves the delta null for an unranked player rather than inventing one', async () => {
-    const model = await buildBoardModel(options());
-    const unranked = model.rows.filter((row) => !['p1', 'p3', 'p5'].includes(`p${row.pickNo}`));
-    expect(unranked.length).toBeGreaterThan(0);
-    for (const row of unranked) {
-      expect(row.adp).toBeNull();
-      expect(row.adpDelta).toBeNull();
-      expect(describeDelta(row)).toBeNull();
+    for (const row of model.rows) {
+      expect(row).not.toHaveProperty('adp');
+      expect(row).not.toHaveProperty('adpDelta');
     }
-  });
-
-  it('describes a delta in words for the tooltip and the dock', () => {
-    const base: BoardRow = {
-      eventId: 'e',
-      pickNo: 74,
-      round: 6,
-      draftSlot: 4,
-      playerName: 'Kyle Pitts',
-      position: 'TE',
-      nflTeam: 'ATL',
-      managerName: 'The Isotones',
-      adp: 22,
-      adpDelta: -52,
-      anchorId: null,
-      exportCommand: null,
-      generateCommand: generateCommandFor(74),
-    };
-    expect(describeDelta(base)).toBe('fell 52 picks past ADP 22');
-    expect(describeDelta({ ...base, adp: 104, adpDelta: 30 })).toBe('reached 30 picks early (ADP 104)');
-    expect(describeDelta({ ...base, adp: 74, adpDelta: 0 })).toBe('taken exactly at ADP 74');
   });
 
   it('`--limit` keeps the last N Picks and drops scenes that fall off the board', async () => {
@@ -257,6 +241,152 @@ describe('the board model', () => {
     const model = await buildBoardModel(options());
     expect(model.subheading).toContain('12 picks');
     expect(model.subheading).toContain('2 Lounge scenes');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Who owns him now
+// ---------------------------------------------------------------------------
+
+describe('the fantasy owner chip', () => {
+  /**
+   * Pick 3 is Player 3 to "Tucker forever #9 Goat"; his scene has Player 9
+   * (drafted six picks later) and Player 1 (drafted first) in the room.
+   */
+  const CROSS_TALK: StoredReaction = {
+    eventId: (PICKS[2] as Pick).eventId,
+    pick: {
+      season: 2026,
+      pickNo: 3,
+      round: 1,
+      playerId: 'p3',
+      playerName: 'Player 3',
+      managerName: (PICKS[2] as Pick).managerName,
+    },
+    createdAt: '2026-08-28T18:15:11.039Z',
+    reactions: [
+      { speakerPlayerId: 'p3', speakerName: 'Player 3', text: 'Mine now.', delayMs: 0, reason: 'other' },
+      { speakerPlayerId: 'p1', speakerName: 'Player 1', text: 'Welcome.', delayMs: 1200, reason: 'other' },
+      { speakerPlayerId: 'p9', speakerName: 'Player 9', text: 'Still here.', delayMs: 2400, reason: 'other' },
+      { speakerPlayerId: 's1', speakerName: 'Undrafted Guy', text: 'Anyone?', delayMs: 3600, reason: 'other' },
+    ],
+  };
+
+  async function chips(): Promise<Record<string, string | undefined>> {
+    const model = await buildBoardModel(options({ reactions: [CROSS_TALK] }));
+    const scene = model.scenes[0];
+    if (!scene) throw new Error('no scene was built');
+    return Object.fromEntries(
+      scene.payload.reactions.map((row) => [row.speakerPlayerId, row.teamChip]),
+    );
+  }
+
+  it('names the manager who already owns a speaker, not his NFL team', async () => {
+    // p1 went first, to "Bark to the Kamara" — the whole point of the change.
+    expect((await chips()).p1).toBe('WR · Bark to the Kamara');
+  });
+
+  it('carries the longest names in the league without truncating them', async () => {
+    const model = await buildBoardModel(options());
+    const owners = new Set(
+      model.scenes.flatMap((scene) => scene.payload.reactions.map((row) => row.teamChip)),
+    );
+    expect(owners).toContain('WR · Tucker forever #9 Goat');
+    expect(owners).toContain('WR · Bark to the Kamara');
+  });
+
+  it('owns the player this very scene is about', async () => {
+    expect((await chips()).p3).toBe('WR · Tucker forever #9 Goat');
+  });
+
+  it('never leaks the future: a player drafted later keeps his NFL chip', async () => {
+    // p9 goes at pick 9. At pick 3 nobody owns him yet, and saying otherwise
+    // would put a fact from six picks in the future into an earlier scene.
+    expect((await chips()).p9).toBe('KC · WR');
+  });
+
+  it('leaves an undrafted speaker on his NFL chip', async () => {
+    expect((await chips()).s1).toBe('KC · WR');
+  });
+
+  it('hands the announcement card the NFL chip it colours itself with', async () => {
+    // The drafted player's own row now names his manager, so the card would
+    // otherwise lose its team accent and its nameplate.
+    const model = await buildBoardModel(options({ reactions: [CROSS_TALK] }));
+    expect(model.scenes[0]?.payload.pick.teamChip).toBe('KC · WR');
+  });
+
+  it('reads ownership from the whole draft, not just the visible board', async () => {
+    // --limit 4 keeps picks 9-12; pick 1's owner is still known.
+    const model = await buildBoardModel(
+      options({ limit: 4, reactions: [{ ...CROSS_TALK, eventId: (PICKS[8] as Pick).eventId,
+        pick: { ...CROSS_TALK.pick, pickNo: 9, playerId: 'p9', playerName: 'Player 9' } }] }),
+    );
+    const chip = model.scenes[0]?.payload.reactions.find((r) => r.speakerPlayerId === 'p1');
+    expect(chip?.teamChip).toBe('WR · Bark to the Kamara');
+  });
+
+  it('maps each player to the Pick that first made him somebody\'s', () => {
+    const owners = ownershipByPlayer(PICKS);
+    expect(owners.get('p1')).toEqual({ pickNo: 1, managerName: 'Bark to the Kamara', position: 'WR' });
+    expect(owners.get('nobody')).toBeUndefined();
+  });
+
+  it('is undefined for an unowned player, a future pick and a nameless manager', () => {
+    expect(ownerChipFor(undefined, 10)).toBeUndefined();
+    expect(ownerChipFor({ pickNo: 11, managerName: 'Nordzone', position: 'RB' }, 10)).toBeUndefined();
+    expect(ownerChipFor({ pickNo: 1, managerName: '  ', position: 'RB' }, 10)).toBeUndefined();
+  });
+
+  it('falls back to the bare team name when the Pick carried no position', () => {
+    expect(ownerChipFor({ pickNo: 1, managerName: 'Nordzone', position: null }, 10)).toBe('Nordzone');
+    expect(ownerChipFor({ pickNo: 10, managerName: 'Nordzone', position: 'rb' }, 10)).toBe('RB · Nordzone');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The clock
+// ---------------------------------------------------------------------------
+
+describe('scene and message timestamps', () => {
+  it('reads a scene header off `createdAt`, in UTC', () => {
+    expect(formatSceneTime('2026-08-28T18:15:11.039Z')).toBe('28 Aug 2026 · 18:15');
+    expect(formatSceneTime('2026-01-02T05:07:00.000Z')).toBe('2 Jan 2026 · 05:07');
+  });
+
+  it('advances each message by its own delayMs, so the clock matches the animation', () => {
+    const at = '2026-08-28T18:15:11.039Z';
+    expect(formatMessageTime(at, 0)).toBe('18:15');
+    expect(formatMessageTime(at, 60_000)).toBe('18:16');
+    expect(formatMessageTime(at, 45 * 60_000)).toBe('19:00');
+  });
+
+  it('shows nothing at all rather than "Invalid Date"', () => {
+    for (const bad of [undefined, null, '', '   ', 'not a date', '2026-13-45T99:99:99Z']) {
+      expect(formatSceneTime(bad)).toBeNull();
+      expect(formatMessageTime(bad, 1200)).toBeNull();
+    }
+    expect(formatMessageTime('2026-08-28T18:15:11.039Z', Number.NaN)).toBe('18:15');
+  });
+
+  it('puts the header on the scene and the clock on every bubble', async () => {
+    const model = await buildBoardModel(options());
+    expect(model.scenes[0]?.timestamp).toBe('28 Aug 2026 · 18:15');
+    expect(model.scenes[1]?.timestamp).toBe('28 Aug 2026 · 20:04');
+    expect(model.scenes[0]?.payload.reactions.map((row) => row.timestamp)).toEqual([
+      '18:15',
+      '18:15',
+      '18:15',
+    ]);
+  });
+
+  it('leaves a Reaction stored before `createdAt` existed simply timeless', async () => {
+    const timeless = REACTIONS.map(({ createdAt: _dropped, ...rest }) => rest);
+    const model = await buildBoardModel(options({ reactions: timeless }));
+    expect(model.scenes[0]?.timestamp).toBeNull();
+    for (const row of model.scenes[0]?.payload.reactions ?? []) {
+      expect(row.timestamp).toBeUndefined();
+    }
   });
 });
 
@@ -319,11 +449,16 @@ describe('the built page', () => {
     expect(html).toContain(exportCommandFor(9));
   });
 
-  it('writes "unranked" rather than a fabricated ADP number', async () => {
+  it('has no ADP column left: no header, no cell, no "unranked"', async () => {
     const html = await buildBoardHtml(options());
-    expect(html).toContain('<span class="unranked">unranked</span>');
-    expect(html).toContain('>+29<');
-    expect(html).toContain('>-2<');
+    expect(html).not.toContain('cell-adp');
+    expect(html).not.toContain('unranked');
+    expect(html).not.toContain('adp-raw');
+    expect(html).not.toContain('ADP');
+    // and the head still describes exactly the columns that are rendered
+    const headStart = html.indexOf('class="board-head"');
+    const head = html.slice(headStart, html.indexOf('id="board-scroll"', headStart));
+    expect(head.match(/<span>/g)).toHaveLength(7);
   });
 
   it('embeds one payload and timeline per scene', async () => {
@@ -454,6 +589,36 @@ describe('loaded in a real browser', () => {
         expect(view.command).toBe(exportCommandFor(9));
         expect(view.horizontalOverflow).toBe(false);
 
+        // The clock: one header per scene, one HH:MM per bubble.
+        const clock = await page.evaluate(() => {
+          const d = (globalThis as unknown as DomWindow).document;
+          return {
+            headers: d.querySelectorAll('.scene-time').length,
+            times: d.querySelectorAll('.scene-rows .row-meta .time').length,
+            firstHeader: d.querySelector('.scene-time')?.textContent ?? null,
+            firstTime: d.querySelector('.scene-rows .row-meta .time')?.textContent ?? null,
+          };
+        });
+        expect(clock.headers).toBe(2);
+        expect(clock.times).toBe(5);
+        expect(clock.firstHeader).toBe('28 Aug 2026 · 18:15');
+        expect(clock.firstTime).toBe('18:15');
+
+        // The chip: a drafted speaker wears his fantasy manager, and a name
+        // that long still fits inside the row it lives in.
+        const chip = await page.evaluate(() => {
+          const d = (globalThis as unknown as DomWindow).document;
+          const node = d.querySelector('.scene-rows .row.is-subject .chip');
+          const row = d.querySelector('.scene-rows .row.is-subject .row-meta');
+          if (!node || !row) return null;
+          return {
+            text: node.textContent,
+            fits: node.getBoundingClientRect().width <= row.getBoundingClientRect().width + 1,
+          };
+        });
+        expect(chip?.text).toBe('WR · Tucker forever #9 Goat');
+        expect(chip?.fits).toBe(true);
+
         // Clicking a Pick with a scene scrolls the transcript to it.
         await page.click('.pick[data-pick="3"]');
         await page.waitForTimeout(700);
@@ -505,6 +670,51 @@ describe('loaded in a real browser', () => {
         expect(inert.moved).toBe(false);
         expect(inert.replayDisabled).toBe(true);
         expect(inert.note).toContain(generateCommandFor(5));
+
+        // Arrowing browses the board without flinging the transcript around:
+        // pick 5 -> pick 9, and the chat stays exactly where it was.
+        const parked = await page.evaluate(
+          () =>
+            (globalThis as unknown as DomWindow).document.getElementById('chat-scroll')
+              ?.scrollTop ?? -1,
+        );
+        for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowDown');
+        await page.waitForTimeout(400);
+        const browsed = await page.evaluate((previous) => {
+          const d = (globalThis as unknown as DomWindow).document;
+          return {
+            selected: d.querySelector('.pick.is-selected')?.getAttribute('data-pick') ?? null,
+            moved: (d.getElementById('chat-scroll')?.scrollTop ?? -1) !== previous,
+            scene: d.querySelector('.scene.is-selected')?.id ?? null,
+          };
+        }, parked);
+        expect(browsed.selected).toBe('9');
+        expect(browsed.moved).toBe(false);
+        expect(browsed.scene).toBeNull();
+
+        // Enter is what commits the browse.
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(1400);
+        const committed = await page.evaluate((previous) => {
+          const d = (globalThis as unknown as DomWindow).document;
+          const scene = d.querySelector('.scene.is-selected');
+          const scroller = d.getElementById('chat-scroll');
+          if (!scene || !scroller) return null;
+          return {
+            id: scene.id,
+            moved: scroller.scrollTop !== previous,
+            // The last scene cannot always reach the top of the scroller, so
+            // what is asserted is that it is on screen, not pixel-pinned.
+            offset: Math.round(
+              scene.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+            ),
+            view: scroller.clientHeight,
+          };
+        }, parked);
+        expect(committed?.id).toBe(anchorIdFor((PICKS[8] as Pick).eventId));
+        expect(committed?.moved).toBe(true);
+        expect(committed?.offset ?? -999).toBeGreaterThan(-10);
+        expect(committed?.offset ?? 999).toBeLessThan(committed?.view ?? 0);
 
         await context.close();
       } finally {

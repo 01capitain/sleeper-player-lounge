@@ -83,7 +83,6 @@ function deps(extra: Partial<Parameters<typeof runBoard>[1]> = {}) {
       build: {
         picks: PICKS,
         reactions: [REACTION],
-        adp: null,
         draft: null,
         headshotOptions: { download: false },
       } satisfies BuildBoardOptions,

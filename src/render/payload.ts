@@ -31,6 +31,13 @@ export interface RenderPayloadPick {
   playerId: string;
   playerName: string;
   managerName: string;
+  /**
+   * OPT-IN, board only. The chip the announcement card should key its team
+   * colour and nameplate off, when that must not be the drafted player's own
+   * reaction row. The exports never set it, so `render.js` falls back to the
+   * subject's row chip exactly as it always has.
+   */
+  teamChip?: string;
 }
 
 /** A dimmed "previously in the Lounge" row. */
@@ -45,6 +52,12 @@ export interface RenderPayloadPreviousMessage {
 /** A reaction bubble. `delayMs` drives the reveal timeline in `video.ts`. */
 export interface RenderPayloadReaction extends RenderPayloadPreviousMessage {
   delayMs: number;
+  /**
+   * OPT-IN, board only. `HH:MM` beside the bubble. The exports never set it and
+   * `render.js` renders nothing when it is absent, so a PNG or MP4 is byte-for-
+   * byte what it was before timestamps existed.
+   */
+  timestamp?: string;
 }
 
 /** Exactly the object `window.LOUNGE.render()` / `.reset()` accept. */

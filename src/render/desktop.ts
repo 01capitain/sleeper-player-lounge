@@ -37,7 +37,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../config.js';
-import { adpFor, loadAdp, type AdpArtifact } from '../import/adp.js';
 import {
   loungeReactionsFile,
   repoRoot,
@@ -49,6 +48,7 @@ import { readJsonIfExists } from '../util/json.js';
 import { readJsonl } from '../util/jsonl.js';
 import { resolveHeadshots, type ResolveHeadshotsOptions } from './headshots.js';
 import {
+  buildTeamChip,
   toRenderPayload,
   type PlayerChipMeta,
   type RenderPayload,
@@ -74,13 +74,6 @@ export interface BoardRow {
   position: string | null;
   nflTeam: string | null;
   managerName: string;
-  /** The player's average draft position, or null when he is UNRANKED. */
-  adp: number | null;
-  /**
-   * `adp - pickNo`. Positive is a reach (taken early), negative is a slide.
-   * Null whenever `adp` is null — an unranked player has no delta, ever.
-   */
-  adpDelta: number | null;
   /** DOM id of this Pick's scene in the right pane, or null when it has none. */
   anchorId: string | null;
   /** `npm run lounge -- react --pick N --format mp4`, or null with no scene. */
@@ -94,6 +87,11 @@ export interface BoardScene {
   eventId: string;
   anchorId: string;
   pickNo: number;
+  /**
+   * The scene's own wall-clock header — `28 Aug 2026 · 18:15` — or null when
+   * the stored Reaction carried no usable `createdAt`.
+   */
+  timestamp: string | null;
   /** Exactly what `window.LOUNGE.render()` accepts. */
   payload: RenderPayload;
   /** The same beats `renderVideo` plays. Replay walks these. */
@@ -122,8 +120,6 @@ export interface BuildBoardOptions extends TimelineOptions {
   reactions?: readonly StoredReaction[];
   /** Override the reactions file. Ignored when `reactions` is given. */
   reactionsFile?: string;
-  /** The ADP artifact. Pass `null` for a board that shows no ADP values. */
-  adp?: AdpArtifact | null;
   /** Only the last N Picks. */
   limit?: number;
   /** `playerId -> { position, nflTeam }`, for the chat's team/position chips. */
@@ -185,6 +181,121 @@ export function anchorIdFor(eventId: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Fantasy ownership — who has him *now*
+// ---------------------------------------------------------------------------
+
+/** The Pick at which a player became somebody's, and who that somebody is. */
+export interface Ownership {
+  /** The overall pick number he went at. Ownership starts here, not before. */
+  pickNo: number;
+  managerName: string;
+  /** His NFL position, from the Pick. `null` when the Pick did not carry one. */
+  position: string | null;
+}
+
+/**
+ * `playerId -> Ownership` across the whole draft.
+ *
+ * Built from every Pick, never only the ones on a `--limit`ed board: a board
+ * showing the last 60 picks still knows that pick 3 happened.
+ */
+export function ownershipByPlayer(picks: readonly Pick[]): Map<string, Ownership> {
+  const owners = new Map<string, Ownership>();
+  for (const pick of picks) {
+    if (!pick?.playerId) continue;
+    const existing = owners.get(pick.playerId);
+    // A player is drafted once; if a feed ever repeats him, the earliest Pick
+    // is the one that made him somebody's.
+    if (existing && existing.pickNo <= pick.pickNo) continue;
+    owners.set(pick.playerId, {
+      pickNo: pick.pickNo,
+      managerName: pick.managerName,
+      position: pick.position ?? null,
+    });
+  }
+  return owners;
+}
+
+/**
+ * The chip a speaker wears inside one scene.
+ *
+ * `RB · Bark to the Kamara` once a fantasy manager owns him, and `undefined`
+ * while he is still on the board — in which case the caller leaves the NFL
+ * chip (`ATL · RB`) that `toRenderPayload` already built alone.
+ *
+ * `atPickNo` is the scene's own pick, and the comparison is inclusive: the
+ * player this scene is about is owned by the manager who just took him. A Pick
+ * that happens *later* is the future, and an earlier scene must not show it.
+ */
+export function ownerChipFor(
+  owner: Ownership | undefined,
+  atPickNo: number,
+): string | undefined {
+  if (!owner || owner.pickNo > atPickNo) return undefined;
+  const manager = owner.managerName?.trim();
+  if (!manager) return undefined;
+  const position = owner.position?.trim().toUpperCase();
+  return position ? `${position} · ${manager}` : manager;
+}
+
+// ---------------------------------------------------------------------------
+// The clock
+// ---------------------------------------------------------------------------
+
+/**
+ * Timestamps are read in UTC, which is how `createdAt` is stored.
+ *
+ * The alternative — the builder's own zone — would make the same reactions.jsonl
+ * produce a different board on a different machine, and a board is a record of
+ * when the draft happened, not of where it was rebuilt. No date library: this is
+ * two fields off a `Date`.
+ */
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+/**
+ * `createdAt + offsetMs`, or null when `createdAt` is missing or unparseable.
+ *
+ * Null rather than a thrown error or an `Invalid Date`: a Reaction persisted
+ * before `createdAt` existed still deserves to be on the board, just without a
+ * clock on it.
+ */
+function instantAt(createdAt: string | null | undefined, offsetMs = 0): Date | null {
+  if (typeof createdAt !== 'string' || createdAt.trim() === '') return null;
+  const base = Date.parse(createdAt);
+  if (!Number.isFinite(base)) return null;
+  const offset = Number.isFinite(offsetMs) ? offsetMs : 0;
+  return new Date(base + offset);
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** `18:15` for one message: the scene's `createdAt` plus its own `delayMs`. */
+export function formatMessageTime(
+  createdAt: string | null | undefined,
+  delayMs = 0,
+): string | null {
+  const at = instantAt(createdAt, delayMs);
+  if (!at) return null;
+  return `${pad2(at.getUTCHours())}:${pad2(at.getUTCMinutes())}`;
+}
+
+/** `28 Aug 2026 · 18:15` — the header above one scene. */
+export function formatSceneTime(createdAt: string | null | undefined): string | null {
+  const at = instantAt(createdAt);
+  if (!at) return null;
+  const day = at.getUTCDate();
+  const month = MONTHS[at.getUTCMonth()] ?? '';
+  return `${day} ${month} ${at.getUTCFullYear()} · ${pad2(at.getUTCHours())}:${pad2(
+    at.getUTCMinutes(),
+  )}`;
+}
+
+// ---------------------------------------------------------------------------
 // Model assembly
 // ---------------------------------------------------------------------------
 
@@ -215,7 +326,6 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
     if (reaction?.eventId && shown.has(reaction.eventId)) byEventId.set(reaction.eventId, reaction);
   }
 
-  const adp = opts.adp !== undefined ? opts.adp : await loadAdp();
   const config =
     opts.config ?? (opts.watermark ? undefined : await loadConfig().catch(() => undefined));
   const watermark =
@@ -238,7 +348,6 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
 
   const rows: BoardRow[] = picks.map((pick) => {
     const reaction = byEventId.get(pick.eventId);
-    const value = adp ? adpFor(pick.playerId, adp) : null;
     return {
       eventId: pick.eventId,
       pickNo: pick.pickNo,
@@ -248,13 +357,15 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
       position: pick.position ?? null,
       nflTeam: pick.nflTeam ?? null,
       managerName: pick.managerName,
-      adp: value,
-      adpDelta: value === null ? null : Math.round(value) - pick.pickNo,
       anchorId: reaction ? anchorIdFor(pick.eventId) : null,
       exportCommand: reaction ? exportCommandFor(pick.pickNo, exportFormat) : null,
       generateCommand: generateCommandFor(pick.pickNo),
     };
   });
+
+  // Ownership is read from the whole draft, not from the (possibly limited)
+  // board: what a scene may show is decided per scene, by pick number.
+  const owners = ownershipByPlayer(allPicks);
 
   // Scenes follow the board, so the transcript reads in draft order.
   const scenes: BoardScene[] = [];
@@ -268,10 +379,12 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
       watermark,
       ...(opts.playerMeta ? { playerMeta: opts.playerMeta } : {}),
     });
+    applyLoungeChrome(payload, pick, owners, opts.playerMeta, reaction.createdAt);
     scenes.push({
       eventId: reaction.eventId,
       anchorId: anchorIdFor(pick.eventId),
       pickNo: pick.pickNo,
+      timestamp: formatSceneTime(reaction.createdAt),
       payload,
       timeline: buildTimeline(payload, timelineOptionsFrom(opts)),
       exportCommand: exportCommandFor(pick.pickNo, exportFormat),
@@ -302,6 +415,43 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
     scenes,
     watermark,
   };
+}
+
+/**
+ * The two things the board shows that an export does not, written onto a
+ * payload `toRenderPayload` has already built.
+ *
+ * Both are opt-in fields the export pipeline never sets, so `render.js` stays
+ * the single renderer and a PNG or MP4 is unaffected:
+ *
+ *  - **the fantasy owner** replaces the NFL chip on every speaker the draft has
+ *    already claimed, because in a draft room "who has him now" beats "who does
+ *    he play for". The announcement card is handed the drafted player's NFL chip
+ *    explicitly (`pick.teamChip`), so it keeps its team colour and nameplate
+ *    even though his own bubble now names his manager.
+ *  - **a clock** on each bubble, `createdAt + delayMs`, so the transcript reads
+ *    as the evening it was.
+ */
+function applyLoungeChrome(
+  payload: RenderPayload,
+  pick: Pick,
+  owners: ReadonlyMap<string, Ownership>,
+  playerMeta: Readonly<Record<string, PlayerChipMeta>> | undefined,
+  createdAt: string | undefined,
+): void {
+  const subjectMeta = playerMeta?.[pick.playerId] ?? {
+    position: pick.position ?? null,
+    nflTeam: pick.nflTeam ?? null,
+  };
+  const nflChip = buildTeamChip(subjectMeta);
+  if (nflChip) payload.pick.teamChip = nflChip;
+
+  for (const row of payload.reactions) {
+    const chip = ownerChipFor(owners.get(row.speakerPlayerId), pick.pickNo);
+    if (chip) row.teamChip = chip;
+    const time = formatMessageTime(createdAt, row.delayMs);
+    if (time) row.timestamp = time;
+  }
 }
 
 function timelineOptionsFrom(opts: BuildBoardOptions): TimelineOptions {
@@ -437,7 +587,6 @@ function renderPickRow(row: BoardRow): string {
     row.round !== null ? `Round ${row.round}` : null,
     position && team ? `${team} · ${position}` : position || team || null,
     `→ ${row.managerName}`,
-    describeDelta(row),
   ]
     .filter((part): part is string => Boolean(part))
     .join(' · ');
@@ -461,7 +610,6 @@ function renderPickRow(row: BoardRow): string {
     `<span class="cell-pos">${renderPosition(position)}</span>` +
     `<span class="cell-team">${escapeHtml(team || '—')}</span>` +
     `<span class="cell-manager">${escapeHtml(row.managerName)}</span>` +
-    `<span class="cell-adp">${renderDelta(row)}</span>` +
     `<span class="cell-scene">${
       hasScene ? '<span class="scene-pill">Scene</span>' : '<span class="no-pill">—</span>'
     }</span>` +
@@ -475,34 +623,6 @@ function renderPosition(position: string): string {
   if (!position) return '<span class="pos">—</span>';
   const token = POSITIONS.has(position) ? position : 'DEF';
   return `<span class="pos" style="--pos: var(--pos-${token})">${escapeHtml(position)}</span>`;
-}
-
-/**
- * The ADP column. An unranked player gets the word "unranked", never a
- * fabricated number: `data/players/adp.json` holds 456 ranked players and
- * absence from it means the board genuinely does not know.
- */
-function renderDelta(row: BoardRow): string {
-  if (row.adp === null || row.adpDelta === null) {
-    return '<span class="unranked">unranked</span>';
-  }
-  const delta = row.adpDelta;
-  const kind = delta > 0 ? 'is-reach' : delta < 0 ? 'is-slide' : 'is-even';
-  const sign = delta > 0 ? `+${delta}` : String(delta);
-  return (
-    `<span class="delta ${kind}" title="${escapeHtml(describeDelta(row) ?? '')}">${sign}</span>` +
-    `<span class="adp-raw">ADP ${Math.round(row.adp)}</span>`
-  );
-}
-
-/** Plain-language version of the delta, for tooltips and the selection dock. */
-export function describeDelta(row: BoardRow): string | null {
-  if (row.adp === null || row.adpDelta === null) return null;
-  const delta = row.adpDelta;
-  const adp = Math.round(row.adp);
-  if (delta === 0) return `taken exactly at ADP ${adp}`;
-  if (delta > 0) return `reached ${delta} picks early (ADP ${adp})`;
-  return `fell ${Math.abs(delta)} picks past ADP ${adp}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +652,7 @@ export async function buildBoardHtml(opts: BuildBoardOptions = {}): Promise<stri
         anchorId: scene.anchorId,
         eventId: scene.eventId,
         pickNo: scene.pickNo,
+        timestamp: scene.timestamp,
         exportCommand: scene.exportCommand,
         messageCount: scene.payload.reactions.length,
         payload: scene.payload,

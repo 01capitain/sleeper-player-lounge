@@ -19,8 +19,8 @@
    Embedded contract (written by src/render/desktop.ts):
      window.__BOARD__ = {
        pickCount, sceneCount, watermark,
-       scenes: [ { anchorId, eventId, pickNo, exportCommand, messageCount,
-                   payload, timeline: { events, durationMs } } ]
+       scenes: [ { anchorId, eventId, pickNo, timestamp, exportCommand,
+                   messageCount, payload, timeline: { events, durationMs } } ]
      }
    ========================================================================== */
 
@@ -99,8 +99,17 @@
 
       var thread = el('div', 'scene-thread');
       var marker = el('div', 'scene-marker');
-      marker.textContent = 'Pick ' + scene.pickNo + ' \u00b7 ' +
+      var label = el('span', 'scene-marker-label');
+      label.textContent = 'Pick ' + scene.pickNo + ' \u00b7 ' +
         ((scene.payload && scene.payload.pick && scene.payload.pick.managerName) || '');
+      marker.appendChild(label);
+      marker.appendChild(el('span', 'scene-marker-rule'));
+      // Formatted in Node from the Reaction's own createdAt. Absent when that
+      // Reaction predates the field or carried something unparseable - the
+      // scene then simply has no clock, never the words "Invalid Date".
+      if (scene.timestamp) {
+        marker.appendChild(el('span', 'scene-time')).textContent = scene.timestamp;
+      }
       thread.appendChild(marker);
 
       var previous = el('div');   previous.id = 'previous';
@@ -315,6 +324,14 @@
     }, HIGHLIGHT_MS);
   }
 
+  /**
+   * Select a pick, and - only when asked - take the transcript to it.
+   *
+   * A click asks (opts.jump): going to a player's chat is the whole reason to
+   * click him, and making that two actions was busywork. Arrowing does not:
+   * running down a list of two hundred picks must not fling the transcript
+   * around, so the keyboard browses the board and Enter is what commits.
+   */
   function select(pick, opts) {
     opts = opts || {};
     if (!pick) return;
@@ -329,17 +346,23 @@
       }
     }
     fillDock(pick);
+    if (opts.jump) jumpToPick(pick, opts.instant === true);
+  }
 
+  /**
+   * Take the transcript to a pick's scene. A pick with no Reaction has nothing
+   * to go to, so the chat stays exactly where the reader left it.
+   */
+  function jumpToPick(pick, instant) {
+    if (!pick) return;
     var anchorId = pick.getAttribute('data-anchor');
-    if (anchorId) {
-      clearTimers();
-      showScene(anchorId);
-      jumpTo(anchorId, opts.instant === true);
-    } else {
-      // A pick with no Reaction is inert against the transcript: the chat
-      // stays exactly where the reader left it.
+    if (!anchorId) {
       all('.scene.is-selected').forEach(function (s) { s.classList.remove('is-selected'); });
+      return;
     }
+    clearTimers();
+    showScene(anchorId);
+    jumpTo(anchorId, instant === true);
   }
 
   function fillDock(pick) {
@@ -481,6 +504,13 @@
     }
     if (event.key === 'ArrowDown' || event.key === 'j') { event.preventDefault(); step(1); }
     else if (event.key === 'ArrowUp' || event.key === 'k') { event.preventDefault(); step(-1); }
+    else if (event.key === 'Enter' && state.selected) {
+      // Enter commits the arrow-key browse. preventDefault stops the focused
+      // pick button firing its own click, which would select a different row
+      // than the one the arrows landed on.
+      event.preventDefault();
+      jumpToPick(state.selected, false);
+    }
     else if (event.key === 'r' && state.selected) {
       var anchorId = state.selected.getAttribute('data-anchor');
       if (anchorId) replay(anchorId);
@@ -512,7 +542,7 @@
     window.addEventListener('resize', fitCanvas);
 
     picks.forEach(function (pick) {
-      pick.addEventListener('click', function () { select(pick); });
+      pick.addEventListener('click', function () { select(pick, { jump: true }); });
     });
 
     if (els.filter) els.filter.addEventListener('input', applyFilter);
@@ -527,9 +557,7 @@
     }
     if (els.jump) {
       els.jump.addEventListener('click', function () {
-        if (!state.selected) return;
-        var anchorId = state.selected.getAttribute('data-anchor');
-        if (anchorId) jumpTo(anchorId, false);
+        jumpToPick(state.selected, false);
       });
     }
     if (els.copy) {
@@ -555,7 +583,7 @@
     // Land on the newest scene: that is the activity a reader came for.
     var lastScene = null;
     picks.forEach(function (p) { if (p.hasAttribute('data-anchor')) lastScene = p; });
-    if (lastScene) select(lastScene, { instant: true });
+    if (lastScene) select(lastScene, { instant: true, jump: true });
 
     document.documentElement.setAttribute('data-board-ready', 'true');
   }

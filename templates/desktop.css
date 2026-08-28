@@ -23,8 +23,6 @@
   --row:          rgba(255, 255, 255, 0.018);
   --row-hover:    rgba(255, 255, 255, 0.055);
   --edge:         rgba(255, 255, 255, 0.075);
-  --reach:        #ffb648;   /* taken before ADP */
-  --slide:        #7fd4ff;   /* fell past ADP */
   --ok:           #4ade80;
 
   --pos-QB:  #ff9d5c;
@@ -159,11 +157,10 @@ html, body {
   grid-template-columns:
     64px                    /* pick no       */
     92px                    /* round · slot  */
-    minmax(190px, 1.35fr)   /* player        */
+    minmax(220px, 1.3fr)    /* player        */
     52px                    /* position      */
     58px                    /* nfl team      */
-    minmax(150px, 1fr)      /* manager       */
-    104px                   /* adp delta     */
+    minmax(210px, 1.25fr)   /* manager       */
     88px;                   /* lounge        */
   align-items: center;
   gap: 12px;
@@ -179,7 +176,6 @@ html, body {
   background: #15111d;
   border-bottom: 1px solid var(--edge);
 }
-.board-head .num { text-align: right; }
 
 .board-scroll {
   overflow-y: auto;
@@ -319,39 +315,6 @@ html, body {
   font-size: 11.5px;
   letter-spacing: 0.07em;
   color: var(--text-dim);
-}
-
-/* --- ADP delta ------------------------------------------------------------ */
-
-.cell-adp { text-align: right; white-space: nowrap; }
-
-.delta {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 2px 7px 3px;
-  border-radius: 6px;
-}
-.delta.is-reach { color: var(--reach); background: rgba(255, 182, 72, 0.12); }
-.delta.is-slide { color: var(--slide); background: rgba(127, 212, 255, 0.11); }
-.delta.is-even  { color: var(--text-dim); background: rgba(255, 255, 255, 0.05); }
-
-/* An unranked player has no ADP at all — never invent one. */
-.cell-adp .unranked {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: rgba(148, 138, 166, 0.5);
-}
-
-.adp-raw {
-  display: block;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  color: rgba(148, 138, 166, 0.62);
-  margin-top: 2px;
 }
 
 /* --- lounge column -------------------------------------------------------- */
@@ -605,11 +568,51 @@ html, body {
   text-transform: uppercase;
   color: var(--text-faint);
 }
-.scene-marker::after {
-  content: "";
+.scene-marker-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The rule is an element rather than ::after so the wall-clock header can sit
+   on the far side of it, where a chat app puts its day divider. */
+.scene-marker-rule {
   flex: 1 1 auto;
   height: 1px;
+  min-width: 24px;
   background: var(--hairline);
+}
+
+/* Date and time of the scene — `createdAt` from reactions.jsonl, in UTC.
+   Absent whenever the stored Reaction carried no usable timestamp. */
+.scene-time {
+  flex: 0 0 auto;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+/* --- chat chrome the board adds ------------------------------------------
+   Both rules only ever match inside this pane. templates/lounge.css is shared
+   verbatim with the PNG and MP4 stages and is never touched from here. */
+
+/* `RB · Bark to the Kamara` is four times the width of `KC · TE`, and
+   lounge.css sizes the chip for the latter and pins it at `flex: 0 0 auto`.
+   Here it may shrink instead — but only once the row genuinely runs out of
+   width, so the common case shows the whole team name and only a pathological
+   one ellipses. */
+.chat-pane .row-meta { flex-wrap: nowrap; }
+.chat-pane .chip {
+  flex: 0 1 auto;
+  min-width: 4ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* `createdAt + delayMs`, so the clock ascends exactly as the animation does. */
+.chat-pane .row-meta .time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 19px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .typing-row { align-items: center; }
@@ -631,6 +634,6 @@ html, body {
 
 @media (max-width: 1180px) {
   :root { --chat-w: clamp(340px, 38vw, 460px); }
-  .board-head, .pick { grid-template-columns: 56px 80px minmax(150px, 1.3fr) 48px 52px minmax(110px, 1fr) 92px 76px; }
+  .board-head, .pick { grid-template-columns: 56px 80px minmax(180px, 1.5fr) 48px 52px minmax(160px, 1.15fr) 76px; }
   .app-tools .filter { width: 190px; }
 }
