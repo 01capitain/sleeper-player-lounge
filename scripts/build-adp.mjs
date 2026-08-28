@@ -11,9 +11,15 @@
  *   node scripts/build-adp.mjs --field adp_dd_ppr
  *   node scripts/build-adp.mjs --dry-run        # inspect without writing
  *
- * Sentinel handling: Sleeper parks undrafted players at 1000.0. Those, and any
- * missing value, are treated as UNRANKED and omitted from the artifact entirely
- * rather than stored as a huge number — a fake ADP becomes a fabricated joke.
+ * Sentinel handling: Sleeper parks undrafted players at 1000.0 AND at 999.0 —
+ * the second sentinel is undocumented and was found by inspecting the payload
+ * (11 players sit at exactly 999 while the real board runs 1..456 contiguously).
+ * Anything at or above UNRANKED_AT_OR_ABOVE, and any missing value, is treated
+ * as UNRANKED and omitted from the artifact entirely rather than stored as a
+ * huge number — a fake ADP becomes a fabricated joke.
+ *
+ * Note these values are an ordinal consensus board (contiguous integers), not
+ * true averages, so a "30-pick reach" means 30 board positions.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -31,11 +37,56 @@ const week = arg('week', '1');
 const field = arg('field', 'adp_dd_half_ppr');
 const dryRun = process.argv.includes('--dry-run');
 const SENTINEL = 1000;
+/**
+ * Anything at or above this is unranked. Set well past any real draft: a
+ * 14-team, 17-round league is 238 picks, and the real board here tops out at
+ * 456, so 900 cannot discard a legitimately drafted player.
+ */
+const UNRANKED_AT_OR_ABOVE = 900;
 
 const url =
   `https://api.sleeper.com/projections/nfl/${season}/${week}` +
   `?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE` +
   `&order_by=${field}`;
+
+// --- --probe: does the returned stats payload depend on order_by? -----------
+if (process.argv.includes('--probe')) {
+  const candidates = [
+    'adp_dd_half_ppr', 'adp_dd_ppr', 'adp_dd_std', 'adp_dd_2qb',
+    'adp_half_ppr', 'adp_ppr', 'adp_std', 'adp_2qb', 'adp_dynasty_half_ppr', 'adp_rookie',
+  ];
+  console.log(`\n  Probing which adp_* fields Sleeper returns for each order_by\n`);
+  console.log('  order_by                  rows   adp_* fields present (usable)');
+  console.log('  ------------------------  -----  --------------------------------------');
+  for (const c of candidates) {
+    const u =
+      `https://api.sleeper.com/projections/nfl/${season}/${week}` +
+      `?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE&order_by=${c}`;
+    let line;
+    try {
+      const r = await fetch(u);
+      if (!r.ok) { line = `HTTP ${r.status}`; }
+      else {
+        const rows = await r.json();
+        const found = new Map();
+        for (const row of rows) {
+          for (const [k, v] of Object.entries(row?.stats ?? {})) {
+            if (!k.startsWith('adp')) continue;
+            const e = found.get(k) ?? 0;
+            found.set(k, e + (typeof v === 'number' && v > 0 && v < SENTINEL ? 1 : 0));
+          }
+        }
+        const desc = [...found].sort().map(([k, n]) => `${k}(${n})`).join(' ') || 'none';
+        line = `${String(rows.length).padStart(5)}  ${desc}`;
+        console.log(`  ${c.padEnd(24)}  ${line}`);
+        continue;
+      }
+    } catch (err) { line = `error: ${err.message}`; }
+    console.log(`  ${c.padEnd(24)}  ${line}`);
+  }
+  console.log('');
+  process.exit(0);
+}
 
 process.stderr.write(`fetching ${url}\n`);
 const res = await fetch(url);
@@ -81,7 +132,10 @@ for (const row of rows) {
   const playerId = row?.player_id;
   if (typeof playerId !== 'string' || playerId.length === 0) { noPlayerId += 1; continue; }
   const value = row?.stats?.[field];
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value >= SENTINEL) {
+  if (
+    typeof value !== 'number' || !Number.isFinite(value) ||
+    value <= 0 || value >= UNRANKED_AT_OR_ABOVE
+  ) {
     unranked += 1;
     continue;
   }
@@ -127,7 +181,7 @@ const artifact = {
   season: Number(season),
   week: Number(week),
   field,
-  unrankedSentinel: SENTINEL,
+  unrankedSentinel: UNRANKED_AT_OR_ABOVE,
   generatedAt: new Date().toISOString(),
   rankedCount: ranked.length,
   adp: Object.fromEntries(ranked),

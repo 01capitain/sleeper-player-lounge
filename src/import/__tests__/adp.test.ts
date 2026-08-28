@@ -9,7 +9,7 @@ function artifact(adp: Record<string, number>): AdpArtifact {
     season: 2026,
     week: 1,
     field: 'adp_dd_half_ppr',
-    unrankedSentinel: 1000,
+    unrankedSentinel: 900,
     generatedAt: '2026-08-28T00:00:00.000Z',
     rankedCount: Object.keys(adp).length,
     adp,
@@ -37,6 +37,17 @@ describe('adpFor', () => {
 
   it('treats the 1000 sentinel as unranked', () => {
     expect(adpFor('x', artifact({ x: 1000 }))).toBeNull();
+  });
+
+  it('treats the undocumented 999 sentinel as unranked', () => {
+    // Sleeper uses 999 as a second sentinel for 11 players. A naive >= 1000
+    // check lets them through as a real ADP and fabricates a ~900-pick fall.
+    expect(adpFor('x', artifact({ x: 999 }))).toBeNull();
+  });
+
+  it('keeps the deepest genuinely ranked players', () => {
+    // The real board is contiguous 1..456; nothing near it may be discarded.
+    expect(adpFor('x', artifact({ x: 456 }))).toBe(456);
   });
 
   it('rejects non-positive and non-finite values', () => {
