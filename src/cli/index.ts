@@ -235,7 +235,12 @@ export function buildProgram(): Command {
         'Examples:\n' +
         '  npm run lounge -- watch\n' +
         '  npm run lounge -- watch --once --stub      one poll, then exit\n' +
-        '  npm run lounge -- watch --league 1389387602825576448\n',
+        '  npm run lounge -- watch --league 1389387602825576448\n' +
+        '  npm run lounge -- watch --sync            hand the draft between machines\n\n' +
+        '--sync commits and pushes data/lounge after every pick and pulls before it starts,\n' +
+        'so you can stop on one machine and resume on another. Run it on BOTH machines and\n' +
+        'only ever one at a time: the transcripts are append-only, so two live watchers\n' +
+        'conflict. Rendered files live in output/ and are gitignored — they do not travel.\n',
     )
     .option('--league <id>', 'watch this league instead of the configured target league')
     .option(
@@ -246,6 +251,10 @@ export function buildProgram(): Command {
     )
     .option('--once', 'poll a single time and exit')
     .option('--no-render', 'generate and persist Reactions, but render nothing')
+    .option(
+      '--sync',
+      'pull data/lounge before starting and commit+push it after every pick, so a multi-day draft can move between machines (one at a time)',
+    )
     .addOption(formatOption())
     .addOption(stubOption())
     .action(async (options: WatchOptions) => {

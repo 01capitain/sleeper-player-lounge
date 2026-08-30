@@ -1215,12 +1215,17 @@ describe('Rule 13 — ADP sentinels never leak and search_rank is never an ADP f
     );
   });
 
-  it('the artifact is an ordinal board of 456 contiguous positions, not a sparse map', () => {
+  it('the artifact is an ordinal board of contiguous positions, not a sparse map', () => {
+    // The exact size is whatever the last `scripts/build-adp.mjs` run produced —
+    // the artifact is regenerated before a draft, so pinning the count here would
+    // turn a routine refresh into a test failure. What must hold is the SHAPE:
+    // ranks 1..rankedCount, each used exactly once. A floor catches a truncated
+    // or empty rebuild, which is the failure this test actually protects against.
     const values = Object.values(realAdp.adp).sort((a, b) => a - b);
     expect(values).toHaveLength(realAdp.rankedCount);
-    expect(values).toHaveLength(456);
+    expect(values.length).toBeGreaterThan(300);
     expect(values[0]).toBe(1);
-    expect(values[values.length - 1]).toBe(456);
+    expect(values[values.length - 1]).toBe(realAdp.rankedCount);
     expect(new Set(values).size).toBe(values.length);
   });
 

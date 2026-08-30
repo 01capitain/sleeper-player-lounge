@@ -28,6 +28,7 @@ import {
   type WatchSummary,
   type WatchTarget,
 } from '../../watch/poller.js';
+import { publish as defaultPublish, pull as defaultPull, type SyncResult } from '../../watch/sync.js';
 import {
   describePick,
   formatDialogue,
@@ -36,6 +37,12 @@ import {
   type ProcessPickOptions,
   type ProcessPickResult,
 } from '../pipeline.js';
+
+/** The slice of `src/watch/sync.ts` the watcher uses. Narrow so a test is two functions. */
+export interface LoungeSync {
+  pull(): Promise<SyncResult>;
+  publish(label: string): Promise<SyncResult>;
+}
 
 export interface WatchOptions {
   /** Watch this league id instead of the configured target league. */
@@ -49,6 +56,11 @@ export interface WatchOptions {
   format?: RenderFormat;
   /** Use `StubDirector` — deterministic, offline, no LLM. */
   stub?: boolean;
+  /**
+   * Commit and push `data/lounge` after every Pick, and pull before starting.
+   * This is what lets a multi-day draft move between machines.
+   */
+  sync?: boolean;
 }
 
 export interface WatchDeps {
@@ -60,6 +72,8 @@ export interface WatchDeps {
   launchBrowser?: () => Promise<LoungeBrowser>;
   target?: WatchTarget;
   stdout?: (line: string) => void;
+  /** Injected in tests so `--sync` never touches a real repository. */
+  sync?: LoungeSync;
   /** Pre-built abort signal. The CLI wires SIGINT into this. */
   signal?: AbortSignal;
 }
@@ -79,6 +93,23 @@ export async function runWatch(
       `poll interval ${seconds}s is below the ${MIN_POLITE_INTERVAL_SECONDS}s the plan asks for; ` +
         'Sleeper is a free public API and this is a slow draft',
     );
+  }
+
+  // --- handoff: catch up with whatever the other machine drafted -------------
+  // Before anything else, and before the high-water mark is first read. Starting
+  // on stale state is the one failure this feature exists to prevent, so a
+  // failed pull stops the watcher rather than quietly drafting over the gap.
+  const sync: LoungeSync | undefined =
+    deps.sync ?? (opts.sync === true ? { pull: () => defaultPull(), publish: defaultPublish } : undefined);
+  if (sync) {
+    const pulled = await sync.pull();
+    if (!pulled.ok) {
+      throw new Error(
+        `--sync could not pull the Lounge forward: ${pulled.detail}. ` +
+          'Resolve the repository by hand before watching, or run without --sync.',
+      );
+    }
+    out(`Lounge sync: ${pulled.detail}`);
   }
 
   const players = deps.players ?? (await loadEnrichedPlayers());
@@ -123,8 +154,8 @@ export async function runWatch(
       onPoll: (result) => {
         for (const line of describePoll(result)) out(line);
       },
-      process: async (pick) =>
-        run(pick, {
+      process: async (pick) => {
+        const result = await run(pick, {
           render: wantsRender,
           stub: opts.stub === true,
           persist: deps.persist ?? {},
@@ -132,7 +163,18 @@ export async function runWatch(
           ...(opts.format ? { format: opts.format } : {}),
           ...(deps.director ? { director: deps.director } : {}),
           ...((await browserFor()) ? { browser: browser as LoungeBrowser } : {}),
-        }),
+        });
+        // After the Reaction is on disk, never before: the commit is a snapshot
+        // of persisted state, and a push that raced the write would hand the
+        // other machine a Lounge that is one Pick ahead of its own transcript.
+        if (sync) {
+          const published = await sync.publish(describePick(pick));
+          // Deliberately not fatal — see the header of `src/watch/sync.ts`.
+          if (published.ok) log.info(`lounge sync: ${published.detail}`);
+          else log.warn(`lounge sync failed: ${published.detail}`);
+        }
+        return result;
+      },
     });
   } finally {
     if (ownsSignal) {
