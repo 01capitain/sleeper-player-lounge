@@ -12,16 +12,18 @@ import {
   makePlayers,
   unconnectedRegulars,
 } from '../../context/__tests__/fixtures.js';
-import type { LoungeContext, Reaction } from '../../types.js';
+import type { LoungeContext, PlayerFact, Reaction, StarPlayer } from '../../types.js';
 import {
   ClaudeCliDirector,
   DirectorFailureError,
+  FACT_BUDGET,
   REQUIRED_CLI_FLAGS,
   buildPrompt,
   parseEnvelope,
   DEFAULT_DIRECTOR_MODEL,
   productRuleViolations,
   renderUserPrompt,
+  selectFacts,
   type DirectorSpawn,
   type FailedEventRecord,
 } from '../claude-cli.js';
@@ -424,6 +426,164 @@ describe('prompt construction (--dry-run path)', () => {
     expect(user).toContain('Use exactly this eventId: draft1:42:9001');
     expect(user).toContain('2 to 6 messages total');
     expect(user).toContain('Cameron Dicker must send at least one message');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Background material: speech patterns and the rotating fact slice
+// ---------------------------------------------------------------------------
+
+/** Six numbered facts, so a selection can be identified by its numbers alone. */
+function factsFor(who: string, count = 6): PlayerFact[] {
+  return Array.from({ length: count }, (_, index) => ({
+    fact: `${who} fact ${index + 1}`,
+    angle: `${who} angle ${index + 1}`,
+    confidence: 'high' as const,
+    source: `https://example.com/${who}/${index + 1}`,
+    accessed: '2026-08-28',
+  }));
+}
+
+/** The drafted player is himself a Regular, which is the case facts matter most in. */
+const researchedRegulars: StarPlayer[] = [
+  {
+    key: 'aaron_rodgers',
+    name: 'Aaron Rodgers',
+    sleeperPlayerId: '96',
+    position: 'QB',
+    required: true,
+    activity: 0.92,
+    voice: ['veteran', 'dry'],
+    speechPattern: 'Controlled and declarative, with a dry aside bolted on after the main point.',
+    hooks: ['remembers the good old days in Green Bay'],
+    facts: factsFor('rodgers'),
+  },
+  {
+    key: 'travis_kelce',
+    name: 'Travis Kelce',
+    sleeperPlayerId: '1466',
+    position: 'TE',
+    required: true,
+    activity: 0.95,
+    voice: ['loud'],
+    speechPattern: 'Long energetic riffs that sound like he joined halfway through a story.',
+    hooks: ['turns draft events into eras and tours'],
+    facts: factsFor('kelce'),
+    guardrails: ['Do not quote copyrighted Taylor Swift lyrics.'],
+  },
+  {
+    key: 'kyle_pitts',
+    name: 'Kyle Pitts',
+    position: 'TE',
+    required: true,
+    activity: 0.9,
+    voice: ['deadpan'],
+    hooks: ['knows the league remembers him as a bust'],
+    leagueLore: ['Kyle Pitts is a recurring symbol of draft disappointment in this league.'],
+    researchPending: true,
+  },
+];
+
+/** A context in which the DRAFTED player is a fact-carrying Regular. */
+async function researchedContext(overrides: { pickNo?: number } = {}): Promise<LoungeContext> {
+  const pickNo = overrides.pickNo ?? 42;
+  return buildContext(
+    makePick({
+      pickNo,
+      playerId: '96',
+      playerName: 'Aaron Rodgers',
+      position: 'QB',
+      nflTeam: 'PIT',
+      eventId: `draft1:${pickNo}:96`,
+    }),
+    {
+      players,
+      starPlayers: researchedRegulars,
+      recentMessages: [],
+      priorPicks: [],
+      history: { historyFor: () => null },
+      teammatesOf: () => [],
+    },
+  );
+}
+
+describe('background material in the prompt', () => {
+  it("renders the drafted Regular's speech pattern and fact angles", async () => {
+    const user = renderUserPrompt(await researchedContext());
+    expect(user).toContain(
+      'Speech pattern: Controlled and declarative, with a dry aside bolted on after the main point.',
+    );
+    expect(user).toContain('Background he could reach for this pick:');
+    expect(user).toMatch(/- rodgers fact \d → rodgers angle \d/);
+  });
+
+  it('tells the Director that background is not fantasy memory and never a historyRef', async () => {
+    const user = renderUserPrompt(await researchedContext());
+    expect(user).toContain('not fantasy memory');
+    expect(user).toContain('must never appear in `historyRefs`');
+    expect(user).toContain('not a list to work through');
+  });
+
+  it('offers a small slice, never the whole research file', async () => {
+    const user = renderUserPrompt(await researchedContext());
+    const offered = user.match(/- rodgers fact \d/g) ?? [];
+    expect(offered.length).toBeGreaterThanOrEqual(FACT_BUDGET.draftedPlayer.min);
+    expect(offered.length).toBeLessThanOrEqual(FACT_BUDGET.draftedPlayer.max);
+  });
+
+  it('says nothing at all for a Regular whose research is still pending', async () => {
+    const user = renderUserPrompt(await researchedContext());
+    expect(user).toContain('Kyle Pitts');
+    expect(user).not.toContain('Speech pattern: undefined');
+  });
+});
+
+describe('fact selection', () => {
+  const facts = factsFor('rodgers');
+
+  it('is deterministic for a given eventId', () => {
+    const a = selectFacts(facts, 'draft1:42:96', '96', true);
+    const b = selectFacts(facts, 'draft1:42:96', '96', true);
+    expect(a).toEqual(b);
+  });
+
+  it('rotates across eventIds, so the same anecdote is not retold every pick', () => {
+    const seen = new Set<string>();
+    for (let pickNo = 1; pickNo <= 40; pickNo += 1) {
+      seen.add(
+        selectFacts(facts, `draft1:${pickNo}:96`, '96', true)
+          .map((fact) => fact.fact)
+          .join('|'),
+      );
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('honours the per-role budget and never repeats a fact within one pick', () => {
+    for (let pickNo = 1; pickNo <= 40; pickNo += 1) {
+      const drafted = selectFacts(facts, `draft1:${pickNo}:96`, '96', true);
+      const other = selectFacts(facts, `draft1:${pickNo}:96`, '1466', false);
+      expect(drafted.length).toBeGreaterThanOrEqual(FACT_BUDGET.draftedPlayer.min);
+      expect(drafted.length).toBeLessThanOrEqual(FACT_BUDGET.draftedPlayer.max);
+      expect(other.length).toBeGreaterThanOrEqual(FACT_BUDGET.otherSpeaker.min);
+      expect(other.length).toBeLessThanOrEqual(FACT_BUDGET.otherSpeaker.max);
+      expect(new Set(drafted.map((fact) => fact.fact)).size).toBe(drafted.length);
+    }
+  });
+
+  it('gives each speaker his own rotation, independent of who else is in the room', () => {
+    const drafted = selectFacts(facts, 'draft1:42:96', '96', true);
+    const sameSeatDifferentPick = selectFacts(facts, 'draft1:43:96', '96', true);
+    expect(drafted).not.toEqual(sameSeatDifferentPick);
+  });
+
+  it('returns nothing when the entry has no research yet', () => {
+    expect(selectFacts(undefined, 'draft1:42:96', '96', true)).toEqual([]);
+    expect(selectFacts([], 'draft1:42:96', '96', true)).toEqual([]);
+  });
+
+  it('never asks for more facts than exist', () => {
+    expect(selectFacts(factsFor('thin', 1), 'draft1:42:96', '96', true)).toHaveLength(1);
   });
 });
 

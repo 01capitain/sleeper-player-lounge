@@ -24,10 +24,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { createRng, hashSeed, weightedSample } from '../context/actors.js';
 import { loungeDir, reactionSchemaFile, repoRoot } from '../paths.js';
 import type {
   LoungeContext,
   LoungeDirector,
+  PlayerFact,
   Reaction,
   ReactionRulesConfig,
   StarPlayer,
@@ -558,6 +560,59 @@ function retryAddendum(violations: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Background material — a rotating slice of the research, never the whole file
+// ---------------------------------------------------------------------------
+
+/**
+ * How many `PlayerFact`s a speaker is offered, by role.
+ *
+ * The cast carries ~80 facts. Handing all of them over on every Pick would make
+ * the prompt enormous AND make the Director recite the same three anecdotes for
+ * the rest of the draft, because a model asked to choose from a long list keeps
+ * choosing the top of it. A small slice that ROTATES is the point: Kelce brings
+ * up Tight End University on one pick and the lateral on the next, and neither
+ * feels like a stock line.
+ */
+export const FACT_BUDGET = {
+  /** The drafted player is the subject of the scene, so he gets the most. */
+  draftedPlayer: { min: 2, max: 3 },
+  /** Everyone else is colour, not subject. */
+  otherSpeaker: { min: 1, max: 2 },
+} as const;
+
+/**
+ * Choose this Pick's slice of one player's background material.
+ *
+ * Deterministic in `(eventId, playerId)` and nothing else — same Pick, same
+ * facts, every rerun, which is the same guarantee `selectActors` gives and is
+ * what makes a scene reproducible. Seeding per player rather than per Pick means
+ * one speaker's rotation never shifts because a different speaker joined the
+ * room. Both the count and the selection come from the same seeded stream.
+ *
+ * Returns `[]` for a Regular still marked `researchPending`, which renders as no
+ * background block at all rather than as an empty heading.
+ */
+export function selectFacts(
+  facts: readonly PlayerFact[] | undefined,
+  eventId: string,
+  playerId: string,
+  isDraftedPlayer: boolean,
+): PlayerFact[] {
+  if (facts === undefined || facts.length === 0) return [];
+  const budget = isDraftedPlayer ? FACT_BUDGET.draftedPlayer : FACT_BUDGET.otherSpeaker;
+  const rng = createRng(hashSeed(`facts:${eventId}:${playerId}`));
+  const span = budget.max - budget.min + 1;
+  const count = Math.min(facts.length, budget.min + Math.floor(rng() * span));
+  // Equal weights, so `weightedSample` degenerates to a uniform draw without
+  // replacement — the same primitive actor selection uses, seeded the same way.
+  return weightedSample(
+    facts.map((fact) => ({ item: fact, weight: 1 })),
+    count,
+    rng,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Prompt construction — the actual creative input
 // ---------------------------------------------------------------------------
 
@@ -619,8 +674,16 @@ export function renderUserPrompt(context: LoungeContext): string {
     'These are the only players who exist right now. Any speaker you use must come from this list.',
   );
   lines.push('');
-  lines.push(...renderRoom(context));
-  lines.push('');
+  const room = renderRoom(context);
+  lines.push(...room.lines);
+  if (room.hasFacts) {
+    // Background material sits on the opposite side of the memory boundary from
+    // the next section, so the distinction is stated where it is easiest to miss.
+    lines.push(
+      'The "Background he could reach for this pick" lines are real NFL and biographical trivia — not fantasy memory. They need no season, they are not history references, and they must never appear in `historyRefs`. They rotate from pick to pick: they are what a player *could* reach for right now, not a list to work through. Using none of them is a perfectly good reaction.',
+    );
+    lines.push('');
+  }
 
   // --- fantasy memory -------------------------------------------------------
   lines.push('## Fantasy memory available for this pick');
@@ -695,6 +758,12 @@ export function renderUserPrompt(context: LoungeContext): string {
   lines.push(`- ${pick.playerName} must send at least one message.`);
   lines.push('- 2 to 6 messages total. Fewer and sharper beats six forced jokes.');
   lines.push('- Pick one or two angles from above. A reaction that hits all of them reads like a list.');
+  lines.push(
+    '- Write each speaker in his own speech pattern. Somebody reading the line with the name hidden should be able to tell who said it.',
+  );
+  lines.push(
+    '- Background material is optional colour. One detail used well beats three name-dropped, and none at all is fine.',
+  );
   lines.push('- Only the players listed under "Who is in the Lounge" may speak. Managers never speak.');
   lines.push(`- Use exactly this eventId: ${pick.eventId}`);
   lines.push('');
@@ -703,10 +772,18 @@ export function renderUserPrompt(context: LoungeContext): string {
   return lines.join('\n');
 }
 
-function renderRoom(context: LoungeContext): string[] {
+/** The room block, plus whether any background material made it in. */
+interface RenderedRoom {
+  lines: string[];
+  /** False when no speaker had `facts`, so the caller can skip the fact preamble. */
+  hasFacts: boolean;
+}
+
+function renderRoom(context: LoungeContext): RenderedRoom {
   const extras = context as Partial<BuiltContext>;
   const out: string[] = [];
   const seen = new Set<string>();
+  let hasFacts = false;
 
   const emit = (
     name: string,
@@ -723,9 +800,28 @@ function renderRoom(context: LoungeContext): string[] {
     out.push(headline);
     if (star) {
       if (star.voice.length > 0) out.push(`Voice: ${star.voice.join(', ')}.`);
+      // The field that makes two Regulars distinguishable with the names hidden:
+      // `voice` is adjectives, this is how the sentences actually come out.
+      if (star.speechPattern !== undefined && star.speechPattern.trim() !== '') {
+        out.push(`Speech pattern: ${star.speechPattern}`);
+      }
       for (const hook of star.hooks) out.push(`- ${hook}`);
       for (const lore of star.leagueLore ?? []) out.push(`- League lore: ${lore}`);
       for (const guardrail of star.guardrails ?? []) out.push(`- Must: ${guardrail}`);
+
+      const facts = selectFacts(
+        star.facts,
+        context.pick.eventId,
+        playerId,
+        playerId === context.pick.playerId,
+      );
+      if (facts.length > 0) {
+        hasFacts = true;
+        out.push('Background he could reach for this pick:');
+        // The angle travels with the fact. The raw fact alone gets recited; the
+        // angle is what tells the model how it becomes a line of dialogue.
+        for (const fact of facts) out.push(`- ${fact.fact} → ${fact.angle}`);
+      }
     }
     // Drop reasons that merely restate the headline, so the block stays short.
     const headlineKey = reasonKey(headline);
@@ -751,7 +847,7 @@ function renderRoom(context: LoungeContext): string[] {
           : actor.reasons,
       );
     }
-    return out;
+    return { lines: out, hasFacts };
   }
 
   // Plain `LoungeContext` (no builder extras) — still fully renderable.
@@ -786,7 +882,7 @@ function renderRoom(context: LoungeContext): string[] {
       [],
     );
   }
-  return out;
+  return { lines: out, hasFacts };
 }
 
 /** Loose comparison key, so "Current NFL teammate of X." matches "current NFL teammate of X". */

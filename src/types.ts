@@ -168,23 +168,65 @@ export type PerformanceOverrides = Record<string, PerformanceLabel>;
 // ---------------------------------------------------------------------------
 
 /**
+ * One sourced NFL/biographical detail about a Regular, from the research pass in
+ * `data/players/research/star-players-research.json`.
+ *
+ * A fact is BACKGROUND, not Fantasy Memory. It is football trivia the player is
+ * publicly known for, so referencing one needs no season, never counts as a
+ * history reference, and must never end up in `ReactionMessage.historyRefs`.
+ * `angle` is the point: it tells the Director how the fact becomes a joke, which
+ * is what stops the raw fact being recited verbatim.
+ */
+export interface PlayerFact {
+  /** The sourced detail itself, stated plainly. */
+  fact: string;
+  /** How to turn it into Lounge dialogue. */
+  angle: string;
+  /** The researcher's own certainty. `low` means treat it as soft. */
+  confidence: Open<'high' | 'medium' | 'low'>;
+  /** Source URL. Provenance lives with the fact, never only in the research file. */
+  source: string;
+  /** ISO date the source was read. */
+  accessed: string;
+}
+
+/**
  * A Regular: a recurring cast member with a persistent personality profile.
  * `leagueLore` and `guardrails` are present on some entries only.
+ *
+ * Two provenances meet in this shape and must not be confused. `key`, `required`,
+ * `activity` and `leagueLore` are ours: other code keys on `key`, actor selection
+ * weights on `activity`, and `leagueLore` is league-specific material no external
+ * source knows. Everything else is research output and is regenerable. Every
+ * research-derived field is optional so an entry still marked `researchPending`
+ * typechecks and renders.
  */
 export interface StarPlayer {
   /** Stable snake_case handle, e.g. `kyle_pitts`. Not a Sleeper player id. */
   key: string;
   name: string;
+  /** Sleeper player id, when the research pass resolved one. */
+  sleeperPlayerId?: string;
   position: Open<'QB' | 'RB' | 'WR' | 'TE'>;
   /** Required Regulars (Rodgers, Kelce, Pitts) must always be castable. */
   required: boolean;
   /** 0..1 chattiness weight used by actor selection. */
   activity: number;
   voice: string[];
+  /**
+   * How he actually talks — sentence length, rhythm, whether he explains himself.
+   * `voice` is a list of adjectives; this is the paragraph that makes two Regulars
+   * distinguishable when the name is hidden.
+   */
+  speechPattern?: string;
   hooks: string[];
+  /** Sourced background material. Only a rotating subset reaches any one prompt. */
+  facts?: PlayerFact[];
   /** League-specific running lore, e.g. Kyle Pitts' bust reputation. */
   leagueLore?: string[];
   guardrails?: string[];
+  /** True while this entry is still waiting on the research pass. */
+  researchPending?: boolean;
 }
 
 /** The whole `star-players.json` file. */

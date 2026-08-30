@@ -117,7 +117,21 @@ Hand this to a research agent with web access. It produces the raw material for
 >
 > ### Players to research
 >
-> *(list players here — start with the ~15 in `data/players/star-players.json`)*
+> *(list players here — start with the cast in `data/players/star-players.json`)*
+
+---
+
+## Status of the first run
+
+The first pass landed as `data/players/research/star-players-research.json` (15 players, 80
+sourced facts) and is merged into `data/players/star-players.json`. Because the researcher could
+not read the real cast file, it reconstructed the roster: 12 entries matched, and the merge
+brought Joe Burrow, De'Von Achane and A.J. Brown in as new Regulars, taking the cast to 18.
+
+Three Regulars are still unresearched and carry `"researchPending": true` in the cast file:
+**CeeDee Lamb**, **Amon-Ra St. Brown** and **Jahmyr Gibbs**. They are the list for the next run.
+Give that run the real cast file, or at least the current `key` and `name` of every entry — a
+reconstructed roster is what produced the mismatch the first time.
 
 ---
 

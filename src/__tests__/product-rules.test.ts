@@ -1054,7 +1054,7 @@ describe('Rule 11 — Regulars are ambient: relevance raises their odds, it neve
     expect(actorWeight(puka.activity, {})).toBeGreaterThan(0);
   });
 
-  it('every one of the 15 Regulars is reachable on a pick that concerns none of them', async () => {
+  it('every one of the 18 Regulars is reachable on a pick that concerns none of them', async () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 400; seed += 1) {
       const actors = selectActors({
