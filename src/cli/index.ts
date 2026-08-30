@@ -255,7 +255,8 @@ export function buildProgram(): Command {
         '--sync commits and pushes data/lounge after every pick and pulls before it starts,\n' +
         'so you can stop on one machine and resume on another. Run it on BOTH machines and\n' +
         'only ever one at a time: the transcripts are append-only, so two live watchers\n' +
-        'conflict. Rendered files live in output/ and are gitignored — they do not travel.\n\n' +
+        'conflict. Rendered scenes in output/ travel with it, so an export made on one\n' +
+        'machine is not made twice.\n\n' +
         '--board rewrites output/board.html after every pick, and the page it writes\n' +
         'reloads itself, so a browser left open on it stays current.\n',
     )

@@ -10,10 +10,11 @@
  *
  * THREE RULES SHAPE EVERYTHING HERE.
  *
- * 1. **Only `data/lounge` is ever committed.** Every git command is pathspec-
- *    limited. A draft-night watcher that commits whatever else happened to be in
- *    the working tree — a half-finished edit, a rebuilt artifact — would be a
- *    trap, and the whole point is that this runs unattended for hours.
+ * 1. **Only `SYNCED_PATHSPEC` is ever committed.** Every git command is
+ *    pathspec-limited. A draft-night watcher that commits whatever else happened
+ *    to be in the working tree — a half-finished edit, a rebuilt artifact —
+ *    would be a trap, and the whole point is that this runs unattended for
+ *    hours.
  * 2. **A sync failure is never fatal.** The Reaction is already on disk by the
  *    time we get here. Losing the push means the other machine is behind; losing
  *    the draft because a push failed would be absurd. Everything returns a
@@ -35,14 +36,17 @@ import { log } from '../util/log.js';
 const execFileAsync = promisify(execFile);
 
 /**
- * The only path this module will ever stage, commit or push.
+ * The only paths this module will ever stage, commit or push.
  *
- * Relative to the repo root because that is what a git pathspec wants. The
- * rendered videos in `output/` are deliberately absent: they are gitignored, so
- * a handoff carries the transcript and the state, not the artifacts. Anything
- * missed can be re-rendered from the Reaction with `lounge react --pick <n>`.
+ * Relative to the repo root because that is what a git pathspec wants.
+ *
+ * `data/lounge` is the Lounge's memory — transcript, state, and the live
+ * draft's Picks. `output` is the rendered scenes: an MP4 costs ~18s of ffmpeg
+ * and never changes once made, so a draft that moves between machines should
+ * carry them rather than re-render. `.gitignore` is what decides which files in
+ * `output` are real exports; this only has to name the directory.
  */
-export const SYNCED_PATHSPEC = 'data/lounge';
+export const SYNCED_PATHSPEC: readonly string[] = ['data/lounge', 'output'];
 
 /** What a sync attempt did. `ok: false` is reported, never thrown. */
 export interface SyncResult {
@@ -106,14 +110,14 @@ export async function publish(label: string, options: GitSyncOptions = {}): Prom
   try {
     // `-A` so a first-ever `messages.jsonl` is picked up as a new file, and a
     // pathspec so nothing outside the Lounge can ride along.
-    await run(['add', '-A', '--', SYNCED_PATHSPEC]);
+    await run(['add', '-A', '--', ...SYNCED_PATHSPEC]);
 
     if (await nothingStaged(run)) {
       return { ok: true, noop: true, detail: 'no Lounge changes to publish' };
     }
 
     // Pathspec-limited commit: whatever else is staged stays staged and uncommitted.
-    await run(['commit', '-m', commitMessage(label), '--', SYNCED_PATHSPEC]);
+    await run(['commit', '-m', commitMessage(label), '--', ...SYNCED_PATHSPEC]);
   } catch (error) {
     return { ok: false, noop: false, detail: `commit failed: ${describe(error)}` };
   }
@@ -158,7 +162,7 @@ async function pushWithRetry(run: GitRunner): Promise<SyncResult> {
 /** True when the pathspec has nothing staged — `diff --cached --quiet` exits 0. */
 async function nothingStaged(run: GitRunner): Promise<boolean> {
   try {
-    await run(['diff', '--cached', '--quiet', '--', SYNCED_PATHSPEC]);
+    await run(['diff', '--cached', '--quiet', '--', ...SYNCED_PATHSPEC]);
     return true;
   } catch {
     // Non-zero exit is git's way of saying "there are staged changes".

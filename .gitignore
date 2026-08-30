@@ -1,11 +1,21 @@
 .DS_Store
 .env
-*.gif
-*.mp4
 data/cache/
 node_modules/
-output/
 players-lounge-handoff.zip
 .playwright-mcp/
 playwright-report/
 test-results/
+
+# Rendered scenes are committed: an export costs ~18s of ffmpeg, it never
+# changes once made, and a draft that moves between machines should not have to
+# re-render what it already produced. `render/index.ts` names every scene
+# `{draftId}-{pickNo}-{playerId}.{format}`, so the leading digit is what tells a
+# real export apart from everything else that lands in output/ — ad-hoc dev
+# screenshots, and the board, which is rebuilt every single pick and would
+# otherwise commit a multi-megabyte blob 112 times.
+output/*
+!output/[0-9]*-[0-9]*-*.png
+!output/[0-9]*-[0-9]*-*.gif
+!output/[0-9]*-[0-9]*-*.mp4
+!output/[0-9]*-[0-9]*-*.html

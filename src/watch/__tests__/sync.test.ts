@@ -39,17 +39,25 @@ function issued(calls: string[][]): string[] {
 // The pathspec guarantee — the reason this module can run unattended
 // ---------------------------------------------------------------------------
 
-describe('nothing outside data/lounge is ever staged, committed or pushed', () => {
-  it('scopes both the add and the commit to the Lounge pathspec', async () => {
+describe('nothing outside the synced pathspec is ever staged, committed or pushed', () => {
+  it('syncs the Lounge and the rendered scenes, and nothing else', () => {
+    // Rendered scenes travel because an MP4 costs ~18s to make and never
+    // changes; which files in output/ count as scenes is .gitignore's business.
+    expect([...SYNCED_PATHSPEC]).toEqual(['data/lounge', 'output']);
+  });
+
+  it('scopes both the add and the commit to that pathspec', async () => {
     // `diff --cached --quiet` throwing is git's way of saying "changes staged".
     const { calls, run } = fakeGit({ 'diff --cached': gitError('') });
     await publish('#1 · round 1 · Jahmyr Gibbs -> Skunk Works', { run });
 
     const add = calls.find((args) => args[0] === 'add');
     const commit = calls.find((args) => args[0] === 'commit');
-    expect(add).toContain(SYNCED_PATHSPEC);
+    for (const pathspec of SYNCED_PATHSPEC) {
+      expect(add).toContain(pathspec);
+      expect(commit).toContain(pathspec);
+    }
     expect(add).toContain('--');
-    expect(commit).toContain(SYNCED_PATHSPEC);
     expect(commit).toContain('--');
   });
 
