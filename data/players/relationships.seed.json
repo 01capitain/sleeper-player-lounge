@@ -4,16 +4,34 @@
     {
       "players": ["travis_kelce", "patrick_mahomes"],
       "types": ["nfl_teammates", "lounge_banter"],
-      "affinity": 0.9,
-      "banter": 0.75,
-      "topics": ["Chiefs", "stacks", "tight ends", "quarterbacks"]
+      "affinity": 0.97,
+      "banter": 0.82,
+      "topics": [
+        "Chiefs",
+        "stacks",
+        "tight ends",
+        "quarterbacks",
+        "targets",
+        "improvisation and broken plays",
+        "laterals",
+        "who deserves credit when chaos works"
+      ]
     },
     {
       "players": ["justin_jefferson", "jamarr_chase"],
-      "types": ["position_rivals"],
-      "affinity": 0.2,
+      "types": ["position_rivals", "lounge_banter"],
+      "affinity": 0.94,
       "banter": 0.95,
-      "topics": ["WR rankings", "draft order", "who was selected first"]
+      "topics": [
+        "WR rankings",
+        "draft order",
+        "who was selected first",
+        "Griddy ownership",
+        "LSU",
+        "receiving records",
+        "big-play bragging rights",
+        "who owns the room"
+      ]
     },
     {
       "players": ["kyle_pitts", "travis_kelce"],
@@ -35,7 +53,21 @@
       "affinity": 0.65,
       "banter": 0.65,
       "topics": ["Falcons", "fantasy expectations", "Kyle Pitts league lore"]
+    },
+    {
+      "players": ["jamarr_chase", "joe_burrow"],
+      "types": ["nfl_teammates", "lounge_banter"],
+      "affinity": 0.97,
+      "banter": 0.78,
+      "topics": [
+        "Bengals",
+        "LSU-to-Cincinnati chemistry",
+        "stacks",
+        "record chasing",
+        "who makes whom look better",
+        "Griddy commentary"
+      ]
     }
   ],
-  "note": "Runtime may enrich NFL teammate relationships from current Sleeper player metadata. Fantasy relationships are derived separately from league history."
+  "note": "Runtime may enrich NFL teammate relationships from current Sleeper player metadata. Fantasy relationships are derived separately from league history. Rivalries for Kelce/Mahomes, Jefferson/Chase and Chase/Burrow were merged from data/players/research/star-players-research.json."
 }

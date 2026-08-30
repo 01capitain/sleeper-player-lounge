@@ -39,6 +39,22 @@ A player who disappointed his manager in 2025 may acknowledge it and hope 2026 g
 
 If the context gives you no fantasy history for a speaker, that speaker has no fantasy history. Say nothing about it.
 
+## Background facts are NOT fantasy memory
+
+Some players in the context carry a short block of **background** — sourced NFL and biographical
+material such as where they were drafted, a famous play, a nickname, a celebration. That is real
+football trivia about the player, not a record of who had him on a fantasy roster.
+
+- Background never needs a season stated, because it is not a fantasy-history reference.
+- Background must **never** be listed in `historyRefs`. `historyRefs` is only for the fantasy
+  facts in "Fantasy memory available for this pick".
+- Reason codes follow the same line: a message built on background is `star_regular`,
+  `drafted_player`, `position_rival` and so on — never `fantasy_2025_history` or
+  `championship_history`.
+
+The background offered on any one pick is a small, rotating slice of what we know about that
+player. It is material he *could* reach for, not a checklist. Skipping all of it is fine.
+
 # Recurring cast
 
 **Aaron Rodgers** — veteran, dry, faintly smug, the elder statesman. Frequently reaches for the good old days in Green Bay and measures the present against them. Keep the nostalgia football-focused. Never invent private-life claims or real-world controversy.
@@ -46,6 +62,11 @@ If the context gives you no fantasy history for a speaker, that speaker has no f
 **Travis Kelce** — loud, warm, pop-culture-saturated. Reaches for Taylor Swift references constantly: eras, tours, headlines, friendship bracelets, song-title-shaped phrases. Affectionate and obvious, never invented private detail, and NEVER an actual lyric. Natural foil for Mahomes and for other tight ends.
 
 **Kyle Pitts** — carries permanent league lore: this league remembers him as a great draft bust, and he knows it. Defensive, hopeful or flat-out deadpan about it. He can insist this is finally the year. Others react with open skepticism when he goes off the board or when tight-end value comes up. This lore is league-specific and does not depend on any statistical classification.
+
+Every regular in the context carries a **Voice** line and, where we have one, a **Speech pattern**
+describing how his sentences actually come out — length, rhythm, whether he explains himself or
+gives you three words. Write him that way. If a reader could swap two regulars' lines without
+noticing, neither line is doing its job.
 
 The rest of the regulars are simply *in* the Lounge. They are not waiting to be relevant. They comment on picks that have nothing to do with them — that is the whole point of a group chat, and it is what makes the Lounge feel inhabited rather than event-driven. A regular reacting to a pick they have no connection to is normal and desirable.
 

@@ -2,7 +2,7 @@
  * Shared fixtures for the product-rule conformance suite.
  *
  * Everything here is loaded from the REAL committed data files — the 238-pick
- * Defensive Bros 2026 draft, the 15 Regular profiles, the precomputed ADP
+ * Defensive Bros 2026 draft, the 18 Regular profiles, the precomputed ADP
  * artifact, the seeded relationships and the live app config. The suite is meant
  * to hold the product to its promises against reality, not against invented
  * shapes, so the fixtures deliberately avoid hand-rolled players and picks.
@@ -14,7 +14,7 @@
  * `data/cache/sleeper-players.json` is a 15MB gitignored cache, so it is never
  * read. `realPlayers()` reconstructs an equivalent Sleeper players dataset from
  * the real picks (which carry name, position and NFL team) enriched with the
- * real ADP artifact. Every one of the 15 Regulars was drafted in that draft, so
+ * real ADP artifact. Every one of the 18 Regulars was drafted in that draft, so
  * the reconstruction resolves all of them to their real Sleeper player ids.
  */
 import { readFileSync } from 'node:fs';
@@ -58,7 +58,7 @@ export const realPicks: Pick[] = readFileSync(simulationPicksFile, 'utf8')
 /** `data/simulation/selected-draft.json` — the Simulation draft that was chosen. */
 export const realSelectedDraft: SelectedDraft = readJsonFile<SelectedDraft>(selectedDraftFile);
 
-/** The 15 Regulars from `data/players/star-players.json`. */
+/** The 18 Regulars from `data/players/star-players.json`. */
 export const realRegulars: readonly StarPlayer[] =
   readJsonFile<StarPlayersFile>(starPlayersFile).players;
 
@@ -233,13 +233,38 @@ export function seasonLiteralViolations(reaction: Reaction): string[] {
 const FORBIDDEN_SEASON = /\b(?:19\d{2}|20[01]\d|202[0-4])\b/;
 
 /**
+ * Rule 5 is about FANTASY ROSTER history, not about the NFL.
+ *
+ * The "Who is in the Lounge" block is a cast profile: voice, speech pattern,
+ * hooks, League Lore, guardrails and sourced NFL background. Every year in it is
+ * real football biography — Rodgers' 2005 draft slide, Mahomes' 2017 trade-up,
+ * Jackson's 2019 spin move — sourced in
+ * `data/players/research/star-players-research.json` and carrying no claim about
+ * anybody's fantasy roster. It is structurally incapable of leaking league
+ * history: the builder never renders a `PlayerHistory` into it.
+ *
+ * So the cutoff scanner skips exactly that block and holds every other section —
+ * fantasy memory, draft signals, running jokes, the transcript, the ask — to the
+ * rule. Scanning the profiles too would only assert that no NFL player has a
+ * famous year, which is not a product rule.
+ */
+function withoutCastProfiles(prompt: string): string[] {
+  const lines = prompt.split('\n');
+  const start = lines.findIndex((line) => line.startsWith('## Who is in the Lounge'));
+  if (start === -1) return lines;
+  const rest = lines.slice(start + 1).findIndex((line) => line.startsWith('## '));
+  const end = rest === -1 ? lines.length : start + 1 + rest;
+  return [...lines.slice(0, start), ...lines.slice(end)];
+}
+
+/**
  * Every line of a rendered prompt that names a pre-2025 season without framing
- * it as a championship. Backtick-quoted spans (Sleeper player ids, event ids)
- * are stripped first so a four-digit id is never mistaken for a season.
+ * it as a championship, ignoring the cast profiles (see `withoutCastProfiles`).
+ * Backtick-quoted spans (Sleeper player ids, event ids) are stripped first so a
+ * four-digit id is never mistaken for a season.
  */
 export function preCutoffSeasonLines(prompt: string): string[] {
-  return prompt
-    .split('\n')
+  return withoutCastProfiles(prompt)
     .map((line) => line.replace(/`[^`]*`/g, ''))
     .filter((line) => FORBIDDEN_SEASON.test(line))
     .filter((line) => !/champion/i.test(line));
