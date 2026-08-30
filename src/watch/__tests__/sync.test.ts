@@ -40,10 +40,13 @@ function issued(calls: string[][]): string[] {
 // ---------------------------------------------------------------------------
 
 describe('nothing outside the synced pathspec is ever staged, committed or pushed', () => {
-  it('syncs the Lounge and the rendered scenes, and nothing else', () => {
-    // Rendered scenes travel because an MP4 costs ~18s to make and never
-    // changes; which files in output/ count as scenes is .gitignore's business.
-    expect([...SYNCED_PATHSPEC]).toEqual(['data/lounge', 'output']);
+  it('syncs the Lounge, the headshots and the rendered scenes, and nothing else', () => {
+    // Each of these is expensive to reproduce and stable once made: an MP4 is
+    // ~18s of ffmpeg, a headshot is a CDN round trip. Which files inside them
+    // count is .gitignore's business. `data/cache` at large must never appear
+    // here — it holds a 15MB dataset and an HTTP cache.
+    expect([...SYNCED_PATHSPEC]).toEqual(['data/lounge', 'data/cache/headshots', 'output']);
+    expect(SYNCED_PATHSPEC).not.toContain('data/cache');
   });
 
   it('scopes both the add and the commit to that pathspec', async () => {

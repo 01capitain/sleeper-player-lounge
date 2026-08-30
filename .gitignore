@@ -1,6 +1,12 @@
 .DS_Store
 .env
-data/cache/
+# The HTTP cache and the 15MB players dataset are regenerable and churn
+# constantly. Player headshots are neither: a photo is keyed by player id and
+# does not change, so committing them is what stops the second machine
+# re-downloading ten megabytes it already had. `output/headshots/` stays out —
+# it is a copy of these bytes that the board rewrites on every rebuild.
+data/cache/*
+!data/cache/headshots/
 node_modules/
 players-lounge-handoff.zip
 .playwright-mcp/

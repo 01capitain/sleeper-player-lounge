@@ -43,10 +43,21 @@ const execFileAsync = promisify(execFile);
  * `data/lounge` is the Lounge's memory — transcript, state, and the live
  * draft's Picks. `output` is the rendered scenes: an MP4 costs ~18s of ffmpeg
  * and never changes once made, so a draft that moves between machines should
- * carry them rather than re-render. `.gitignore` is what decides which files in
- * `output` are real exports; this only has to name the directory.
+ * carry them rather than re-render. `data/cache/headshots` is the player photos,
+ * which are static per player and fetched from Sleeper's CDN on a miss — a
+ * draft brings new players in all night, and every one of them is a download
+ * the other machine should not repeat.
+ *
+ * `.gitignore` is what decides which files inside these directories are real;
+ * this only has to name the directories, which keeps that judgement in one
+ * place. Note `data/cache` as a whole is NOT here: the 15MB players dataset and
+ * the HTTP cache are regenerable churn.
  */
-export const SYNCED_PATHSPEC: readonly string[] = ['data/lounge', 'output'];
+export const SYNCED_PATHSPEC: readonly string[] = [
+  'data/lounge',
+  'data/cache/headshots',
+  'output',
+];
 
 /** What a sync attempt did. `ok: false` is reported, never thrown. */
 export interface SyncResult {
