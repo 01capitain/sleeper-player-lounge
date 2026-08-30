@@ -143,6 +143,14 @@ export interface BuildBoardOptions extends TimelineOptions {
   /** The `--format` shown in the export command. Defaults to `mp4`. */
   exportFormat?: RenderFormat;
   /**
+   * Seconds between the page's own reloads. 0 or omitted builds a still board
+   * with no Live control at all, which is what a finished draft wants.
+   *
+   * The page can only reload; it has no way to be told a Pick landed. Pair this
+   * with `lounge watch --board`, which rewrites the file underneath it.
+   */
+  refreshSeconds?: number;
+  /**
    * A ready-made model, bypassing every lookup above. Mirrors
    * `preparePayload`'s `payload` option: a caller that already needs the model
    * (to report counts, say) builds it once and hands it straight back.
@@ -629,6 +637,22 @@ function renderPosition(position: string): string {
 // The file
 // ---------------------------------------------------------------------------
 
+/** The floor on self-refresh. Below this the page reloads faster than it reads. */
+export const MIN_REFRESH_SECONDS = 10;
+
+/**
+ * Coerce `refreshSeconds` into something the page can act on.
+ *
+ * Anything absent, non-finite or under the floor becomes 0, which renders a
+ * still board with no Live control — the honest outcome for a value the page
+ * cannot honour, rather than a control that lies about what it is doing.
+ */
+export function normalizeRefreshSeconds(seconds: number | undefined): number {
+  if (seconds === undefined || !Number.isFinite(seconds)) return 0;
+  const whole = Math.trunc(seconds);
+  return whole < MIN_REFRESH_SECONDS ? 0 : whole;
+}
+
 /** Build the complete, self-contained desktop board page. */
 export async function buildBoardHtml(opts: BuildBoardOptions = {}): Promise<string> {
   const model = await buildBoardModel(opts);
@@ -648,6 +672,7 @@ export async function buildBoardHtml(opts: BuildBoardOptions = {}): Promise<stri
       pickCount: model.rows.length,
       sceneCount: model.scenes.length,
       watermark: model.watermark,
+      refreshSeconds: normalizeRefreshSeconds(opts.refreshSeconds),
       scenes: model.scenes.map((scene) => ({
         anchorId: scene.anchorId,
         eventId: scene.eventId,

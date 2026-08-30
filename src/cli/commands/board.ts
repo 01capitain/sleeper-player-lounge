@@ -21,6 +21,7 @@ import { readJsonl } from '../../util/jsonl.js';
 import {
   buildBoardModel,
   renderBoardHtml,
+  MIN_REFRESH_SECONDS,
   type BuildBoardOptions,
 } from '../../render/desktop.js';
 import type { PlayerChipMeta } from '../../render/payload.js';
@@ -38,6 +39,8 @@ export interface BoardOptions {
   open?: boolean;
   /** Board this picks file instead of the auto-detected draft. */
   picks?: string;
+  /** Seconds between the page's own reloads. Omit or 0 for a still board. */
+  refresh?: number;
 }
 
 /** Which draft a board was built from, and the file it came from. */
@@ -101,6 +104,15 @@ export async function runBoard(
   if (build.playerMeta === undefined) {
     const players = deps.players ?? (await loadEnrichedPlayers());
     build.playerMeta = buildPlayerMeta(players);
+  }
+  if (opts.refresh !== undefined) {
+    if (!Number.isFinite(opts.refresh) || opts.refresh < MIN_REFRESH_SECONDS) {
+      throw new Error(
+        `--refresh must be at least ${MIN_REFRESH_SECONDS} seconds, got '${opts.refresh}'. ` +
+          'Faster than that and the page reloads while you are reading it.',
+      );
+    }
+    build.refreshSeconds = Math.trunc(opts.refresh);
   }
 
   // Tests inject `build.picks` directly and must not be second-guessed.

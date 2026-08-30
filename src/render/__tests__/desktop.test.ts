@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import type { Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Pick, Reaction } from '../../types.js';
@@ -57,6 +58,8 @@ interface DomNode {
   scrollTop: number;
   clientHeight: number;
   getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+  classList: { contains(token: string): boolean };
   getBoundingClientRect(): DomRect;
 }
 interface DomDocument {
@@ -719,6 +722,129 @@ describe('loaded in a real browser', () => {
         await context.close();
       } finally {
         await browser.close();
+      }
+    },
+    LOAD_TIMEOUT,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// The live control, in the same real browser
+// ---------------------------------------------------------------------------
+
+/**
+ * The board is a static file: it cannot be told a Pick landed, only reload and
+ * find out. `lounge watch --board` rewrites the file; `--refresh` is what makes
+ * the open page come back for it.
+ *
+ * The behaviour worth pinning is the restraint, not the timer. A reload while
+ * the reader is part-way through an older scene would be the one unforgivable
+ * thing this feature could do, so selecting anything but the newest Pick has to
+ * pause it.
+ */
+describe('the live control', () => {
+  let dir: string;
+
+  beforeAll(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lounge-board-live-'));
+  });
+
+  afterAll(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  async function boardPage(
+    extra: BuildBoardOptions,
+  ): Promise<{ page: Page; close: () => Promise<void> }> {
+    const file = path.join(dir, `board-${Math.random().toString(36).slice(2)}.html`);
+    await renderBoardHtml(file, options(extra));
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(pathToFileURL(file).href, { waitUntil: 'load' });
+    await page.waitForFunction(() => {
+      const d = (globalThis as unknown as DomWindow).document;
+      return d.documentElement.getAttribute('data-board-ready') === 'true';
+    });
+    return { page, close: () => browser.close() };
+  }
+
+  const liveState = (page: Page): Promise<{ hidden: boolean; paused: boolean; label: string }> =>
+    page.evaluate(() => {
+      const d = (globalThis as unknown as DomWindow).document;
+      const node = d.getElementById('live');
+      return {
+        hidden: node === null || node.hasAttribute('hidden'),
+        paused: node?.classList.contains('is-paused') ?? false,
+        label: d.getElementById('live-label')?.textContent ?? '',
+      };
+    });
+
+  it(
+    'is absent entirely on a still board, rather than a control that does nothing',
+    async () => {
+      const { page, close } = await boardPage({});
+      try {
+        expect((await liveState(page)).hidden).toBe(true);
+      } finally {
+        await close();
+      }
+    },
+    LOAD_TIMEOUT,
+  );
+
+  it(
+    'runs on the newest pick, and pauses the moment the reader goes back',
+    async () => {
+      const { page, close } = await boardPage({ refreshSeconds: 3600 });
+      try {
+        // Boot lands on the newest scene, which is where a live reader belongs.
+        const initial = await liveState(page);
+        expect(initial.hidden).toBe(false);
+        expect(initial.paused).toBe(false);
+        expect(initial.label).toMatch(/^Live \d+s$/);
+
+        // Reading an older scene is the reader saying "don't move".
+        await page.click('.pick[data-pick="3"]');
+        expect((await liveState(page)).paused).toBe(true);
+
+        // Coming back to the newest pick resumes it.
+        await page.click('.pick[data-pick="9"]');
+        expect((await liveState(page)).paused).toBe(false);
+      } finally {
+        await close();
+      }
+    },
+    LOAD_TIMEOUT,
+  );
+
+  it(
+    'can be paused and resumed by hand',
+    async () => {
+      const { page, close } = await boardPage({ refreshSeconds: 3600 });
+      try {
+        await page.click('#live');
+        expect((await liveState(page)).paused).toBe(true);
+        await page.click('#live');
+        expect((await liveState(page)).paused).toBe(false);
+      } finally {
+        await close();
+      }
+    },
+    LOAD_TIMEOUT,
+  );
+
+  it(
+    'pauses while a scene is replaying, so the beats are never cut off',
+    async () => {
+      const { page, close } = await boardPage({ refreshSeconds: 3600 });
+      try {
+        await page.click('#replay');
+        await page.waitForTimeout(120);
+        expect((await liveState(page)).paused).toBe(true);
+      } finally {
+        await close();
       }
     },
     LOAD_TIMEOUT,

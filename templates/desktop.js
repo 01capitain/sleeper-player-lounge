@@ -64,7 +64,9 @@
     jump: $('jump'),
     exportCmd: $('export-cmd'),
     copy: $('copy'),
-    chatSub: $('chat-sub-text')
+    chatSub: $('chat-sub-text'),
+    live: $('live'),
+    liveLabel: $('live-label')
   };
 
   var picks = all('.pick');
@@ -278,7 +280,14 @@
     // leave the transcript missing bubbles.
     state.timers.push(setTimeout(function () {
       showScene(anchorId);
+      // A reload mid-replay would cut the beats off, so the countdown only
+      // resumes once the scene has finished playing.
+      live.busy = false;
+      resetCountdown();
     }, (scene.timeline.durationMs || 0) + 80));
+
+    live.busy = true;
+    renderLive();
   }
 
   /* ======================================================================
@@ -347,6 +356,7 @@
     }
     fillDock(pick);
     if (opts.jump) jumpToPick(pick, opts.instant === true);
+    syncLiveToSelection();
   }
 
   /**
@@ -536,6 +546,93 @@
     );
   }
 
+  /* ======================================================================
+     Live refresh
+
+     The board is a static file with no server, so it cannot be told that a
+     pick landed — it can only reload and find out. `lounge watch --board`
+     rewrites the file after every pick; this reloads it on a timer.
+
+     The whole design problem is that a reload is destructive to whatever the
+     reader is doing. Three rules keep it out of the way:
+
+       - Reading an older scene pauses it. Selecting anything that is not the
+         newest pick means the reader went looking for something, and yanking
+         them back to the newest pick mid-read is the one unforgivable
+         behaviour here. Returning to the newest pick resumes.
+       - Replaying pauses it, and the replay's own beats resume it.
+       - The selected pick rides in location.hash, so a reload that DOES
+         happen while something is selected comes back to it rather than
+         jumping to the newest.
+     ====================================================================== */
+
+  var live = {
+    seconds: Number(DATA.refreshSeconds) || 0,
+    timer: null,
+    remaining: 0,
+    paused: false,
+    /** Set while a replay is running, so its beats are never cut off. */
+    busy: false
+  };
+
+  function liveEnabled() { return live.seconds > 0 && els.live; }
+
+  function renderLive() {
+    if (!liveEnabled()) return;
+    var paused = live.paused || live.busy;
+    els.live.classList.toggle('is-paused', paused);
+    els.live.setAttribute('aria-pressed', paused ? 'false' : 'true');
+    if (els.liveLabel) {
+      els.liveLabel.textContent = paused ? 'Paused' : 'Live ' + live.remaining + 's';
+    }
+  }
+
+  function liveTick() {
+    if (live.paused || live.busy) { renderLive(); return; }
+    live.remaining -= 1;
+    if (live.remaining > 0) { renderLive(); return; }
+    // Carry the selection across the reload so we come back where we were.
+    var anchorId = state.selected && state.selected.getAttribute('data-anchor');
+    try {
+      location.replace(anchorId ? '#' + anchorId : location.pathname + location.search);
+      location.reload();
+    } catch (e) {
+      location.reload();
+    }
+  }
+
+  function resetCountdown() {
+    live.remaining = live.seconds;
+    renderLive();
+  }
+
+  function setPaused(paused) {
+    live.paused = paused;
+    if (!paused) resetCountdown();
+    else renderLive();
+  }
+
+  /** Pause while the reader is on anything but the newest pick. */
+  function syncLiveToSelection() {
+    if (!liveEnabled()) return;
+    var newest = null;
+    picks.forEach(function (p) { if (p.hasAttribute('data-anchor')) newest = p; });
+    setPaused(state.selected !== null && state.selected !== newest);
+  }
+
+  function startLive() {
+    if (!liveEnabled()) return;
+    els.live.hidden = false;
+    resetCountdown();
+    live.timer = setInterval(liveTick, 1000);
+    els.live.addEventListener('click', function () { setPaused(!live.paused); });
+    // A hidden tab should not spend the countdown; coming back should not
+    // reload instantly either, so the countdown simply restarts.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) resetCountdown();
+    });
+  }
+
   function boot() {
     buildScenes();
     fitCanvas();
@@ -580,10 +677,23 @@
 
     applyFilter();
 
-    // Land on the newest scene: that is the activity a reader came for.
+    // Land on the newest scene: that is the activity a reader came for. Unless
+    // a live refresh put an anchor in the hash, which means the reader was
+    // already somewhere specific and the reload should be invisible to them.
     var lastScene = null;
     picks.forEach(function (p) { if (p.hasAttribute('data-anchor')) lastScene = p; });
-    if (lastScene) select(lastScene, { instant: true, jump: true });
+
+    var wanted = null;
+    var hash = (location.hash || '').replace(/^#/, '');
+    if (hash) {
+      picks.forEach(function (p) {
+        if (p.getAttribute('data-anchor') === hash) wanted = p;
+      });
+    }
+    var landing = wanted || lastScene;
+    if (landing) select(landing, { instant: true, jump: true });
+
+    startLive();
 
     document.documentElement.setAttribute('data-board-ready', 'true');
   }

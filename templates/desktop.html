@@ -48,6 +48,11 @@
       <input id="filter" class="filter" type="search" autocomplete="off"
              placeholder="Filter player, position, team or manager" aria-label="Filter picks">
       <label class="toggle"><input type="checkbox" id="scenes-only"> Lounge scenes only</label>
+      <button type="button" class="live" id="live" hidden
+              aria-live="polite" title="Reload to pick up new reactions">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span class="live-label" id="live-label">Live</span>
+      </button>
       <span class="tools-count" id="visible-count"></span>
     </div>
   </header>

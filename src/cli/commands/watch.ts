@@ -30,6 +30,7 @@ import {
   type WatchTarget,
 } from '../../watch/poller.js';
 import { publish as defaultPublish, pull as defaultPull, type SyncResult } from '../../watch/sync.js';
+import { runBoard } from './board.js';
 import {
   describePick,
   formatDialogue,
@@ -38,6 +39,9 @@ import {
   type ProcessPickOptions,
   type ProcessPickResult,
 } from '../pipeline.js';
+
+/** How often the live board reloads itself, unless `--board-refresh` says otherwise. */
+export const DEFAULT_BOARD_REFRESH_SECONDS = 30;
 
 /** The slice of `src/watch/sync.ts` the watcher uses. Narrow so a test is two functions. */
 export interface LoungeSync {
@@ -62,6 +66,14 @@ export interface WatchOptions {
    * This is what lets a multi-day draft move between machines.
    */
   sync?: boolean;
+  /**
+   * Rebuild `output/board.html` after every Pick, with the page set to reload
+   * itself every `boardRefresh` seconds. Together those make the board live:
+   * the watcher rewrites the file, the open page picks it up.
+   */
+  board?: boolean;
+  /** Seconds between the board page's own reloads. Defaults to 30. */
+  boardRefresh?: number;
 }
 
 export interface WatchDeps {
@@ -77,6 +89,8 @@ export interface WatchDeps {
   sync?: LoungeSync;
   /** Injected in tests so recording the board's picks never writes to `data/`. */
   recordPicks?: (picks: readonly Pick[]) => Promise<void>;
+  /** Injected in tests so `--board` never writes an HTML file. */
+  buildBoard?: () => Promise<string>;
   /** Pre-built abort signal. The CLI wires SIGINT into this. */
   signal?: AbortSignal;
 }
@@ -118,6 +132,27 @@ export async function runWatch(
   const players = deps.players ?? (await loadEnrichedPlayers());
   const wantsRender = opts.render !== false;
   const run = deps.processPick ?? defaultProcessPick;
+
+  // --- the live board -------------------------------------------------------
+  // The board is a static file that can only reload itself, so "live" is two
+  // halves: this rewrites the file after every Pick, and `--refresh` makes the
+  // open page come back for it.
+  const boardRefresh = opts.boardRefresh ?? DEFAULT_BOARD_REFRESH_SECONDS;
+  const buildBoard: (() => Promise<string>) | undefined =
+    deps.buildBoard ??
+    (opts.board === true
+      ? async () =>
+          (await runBoard({ refresh: boardRefresh }, { players, stdout: () => undefined }))
+            .outputPath
+      : undefined);
+  if (buildBoard && deps.buildBoard === undefined) {
+    // Build once up front, so there is a file to open before Pick one lands.
+    const file = await buildBoard().catch((error: unknown) => {
+      log.warn('could not build the initial board', error);
+      return null;
+    });
+    if (file !== null) out(`Board: ${file} — reloads itself every ${boardRefresh}s`);
+  }
 
   // --- Ctrl-C: finish the pick in flight, then stop ---------------------------
   const controller = new AbortController();
@@ -173,6 +208,15 @@ export async function runWatch(
         // After the Reaction is on disk, never before: the commit is a snapshot
         // of persisted state, and a push that raced the write would hand the
         // other machine a Lounge that is one Pick ahead of its own transcript.
+        // Before the sync, so the rebuilt board rides in the same commit as
+        // the Reaction that changed it.
+        if (buildBoard) {
+          // Not fatal, for the same reason a sync failure is not: the Reaction
+          // is saved, and a view is not worth a draft.
+          await buildBoard()
+            .then((file) => log.info(`board rebuilt: ${file}`))
+            .catch((error: unknown) => log.warn('could not rebuild the board', error));
+        }
         if (sync) {
           const published = await sync.publish(describePick(pick));
           // Deliberately not fatal — see the header of `src/watch/sync.ts`.

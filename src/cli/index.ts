@@ -30,7 +30,11 @@ import { runReact, type ReactOptions } from './commands/react.js';
 import { runScreenshot, type ScreenshotOptions } from './commands/screenshot.js';
 import { runSetup, type RunSetupOptions } from './commands/setup.js';
 import { runSimulate, type SimulateOptions } from './commands/simulate.js';
-import { runWatch, type WatchOptions } from './commands/watch.js';
+import {
+  runWatch,
+  DEFAULT_BOARD_REFRESH_SECONDS,
+  type WatchOptions,
+} from './commands/watch.js';
 import { DEFAULT_INTERVAL_SECONDS } from '../watch/poller.js';
 
 export { runBoard, runDemo, runHistoryImport, runReact, runScreenshot, runSetup, runSimulate, runWatch };
@@ -207,8 +211,9 @@ export function buildProgram(): Command {
     .addHelpText(
       'after',
       '\nBoards the live draft once `watch` has recorded one, otherwise the Simulation.\n' +
-        'The summary line says which. It is a static file, so rebuild it to see new\n' +
-        'picks — it does not refresh itself.\n\n' +
+        'The summary line says which. Without --refresh it is a still page: rebuild it to\n' +
+        'see new picks. With --refresh, and `watch --board` rewriting the file underneath,\n' +
+        'a browser left open on it keeps itself current.\n\n' +
         'Writes output/board.html plus a headshots/ folder it references — keep the\n' +
         'two together. No server and no network, but not a single file: each photo is\n' +
         'stored once and shared across every scene, which keeps a full board small.\n' +
@@ -221,6 +226,11 @@ export function buildProgram(): Command {
         '  npm run lounge -- board --out /tmp/draft.html\n',
     )
     .option('--picks <file>', 'board this picks file instead of the auto-detected draft')
+    .option(
+      '--refresh <sec>',
+      'make the page reload itself every N seconds (min 10); pair with `watch --board`',
+      parseIntOption,
+    )
     .option('--limit <n>', 'show only the last N picks', parseIntOption)
     .option('--out <file>', 'write to this path instead of output/board.html')
     .option('--open', 'open the built board')
@@ -240,11 +250,14 @@ export function buildProgram(): Command {
         '  npm run lounge -- watch\n' +
         '  npm run lounge -- watch --once --stub      one poll, then exit\n' +
         '  npm run lounge -- watch --league 1389387602825576448\n' +
-        '  npm run lounge -- watch --sync            hand the draft between machines\n\n' +
+        '  npm run lounge -- watch --sync            hand the draft between machines\n' +
+        '  npm run lounge -- watch --board --sync    live board, portable between machines\n\n' +
         '--sync commits and pushes data/lounge after every pick and pulls before it starts,\n' +
         'so you can stop on one machine and resume on another. Run it on BOTH machines and\n' +
         'only ever one at a time: the transcripts are append-only, so two live watchers\n' +
-        'conflict. Rendered files live in output/ and are gitignored — they do not travel.\n',
+        'conflict. Rendered files live in output/ and are gitignored — they do not travel.\n\n' +
+        '--board rewrites output/board.html after every pick, and the page it writes\n' +
+        'reloads itself, so a browser left open on it stays current.\n',
     )
     .option('--league <id>', 'watch this league instead of the configured target league')
     .option(
@@ -258,6 +271,13 @@ export function buildProgram(): Command {
     .option(
       '--sync',
       'pull data/lounge before starting and commit+push it after every pick, so a multi-day draft can move between machines (one at a time)',
+    )
+    .option('--board', 'rebuild output/board.html after every pick, as a live view')
+    .option(
+      '--board-refresh <sec>',
+      'how often the live board reloads itself (min 10)',
+      parseIntOption,
+      DEFAULT_BOARD_REFRESH_SECONDS,
     )
     .addOption(formatOption())
     .addOption(stubOption())
