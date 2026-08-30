@@ -21,6 +21,7 @@ import { log } from '../../util/log.js';
 import {
   DEFAULT_INTERVAL_SECONDS,
   MIN_POLITE_INTERVAL_SECONDS,
+  recordLivePicks,
   resolveWatchTarget,
   watchDraft,
   type LeagueSource,
@@ -74,6 +75,8 @@ export interface WatchDeps {
   stdout?: (line: string) => void;
   /** Injected in tests so `--sync` never touches a real repository. */
   sync?: LoungeSync;
+  /** Injected in tests so recording the board's picks never writes to `data/`. */
+  recordPicks?: (picks: readonly Pick[]) => Promise<void>;
   /** Pre-built abort signal. The CLI wires SIGINT into this. */
   signal?: AbortSignal;
 }
@@ -149,6 +152,9 @@ export async function runWatch(
       players,
       signal,
       intervalMs: seconds * 1000,
+      // Gives `lounge board` a live draft to render. Without it the board falls
+      // back to the Simulation, whose eventIds match no live Reaction.
+      recordPicks: deps.recordPicks ?? recordLivePicks,
       ...(opts.once === true ? { once: true } : {}),
       ...(deps.persist ? { persist: deps.persist } : {}),
       onPoll: (result) => {

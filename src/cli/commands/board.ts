@@ -15,7 +15,9 @@ import path from 'node:path';
 
 import { loadEnrichedPlayers, openFile } from '../pipeline.js';
 import type { PlayerIndex } from '../../import/players.js';
-import { outputDir } from '../../paths.js';
+import { livePicksFile, outputDir, simulationPicksFile } from '../../paths.js';
+import type { Pick } from '../../types.js';
+import { readJsonl } from '../../util/jsonl.js';
 import {
   buildBoardModel,
   renderBoardHtml,
@@ -34,6 +36,31 @@ export interface BoardOptions {
   out?: string;
   /** Open the built file with the platform opener. */
   open?: boolean;
+  /** Board this picks file instead of the auto-detected draft. */
+  picks?: string;
+}
+
+/** Which draft a board was built from, and the file it came from. */
+export interface PickSource {
+  label: 'live' | 'simulation' | 'explicit';
+  file: string;
+}
+
+/**
+ * Decide which draft to board.
+ *
+ * `lounge watch` records the live draft to `data/lounge/picks.jsonl`, so once
+ * the real draft is under way that file is what anybody opening the board means.
+ * Before it exists there is only the Simulation, which is also what a dry run
+ * wants. Falling back silently would be the wrong call in exactly the case that
+ * matters — a live draft boarded against Simulation picks matches no Reaction
+ * and renders an empty transcript — so `runBoard` prints which one it used.
+ */
+export async function resolvePickSource(explicit?: string): Promise<PickSource> {
+  if (explicit !== undefined) return { label: 'explicit', file: path.resolve(explicit) };
+  const live = await readJsonl<Pick>(livePicksFile).catch(() => []);
+  if (live.length > 0) return { label: 'live', file: livePicksFile };
+  return { label: 'simulation', file: simulationPicksFile };
 }
 
 export interface BoardDeps {
@@ -76,6 +103,13 @@ export async function runBoard(
     build.playerMeta = buildPlayerMeta(players);
   }
 
+  // Tests inject `build.picks` directly and must not be second-guessed.
+  const source =
+    build.picks === undefined && build.picksFile === undefined
+      ? await resolvePickSource(opts.picks)
+      : null;
+  if (source) build.picksFile = source.file;
+
   // Headshots are copied into `<outDir>/headshots/` and referenced relatively,
   // so the model has to know where the page will land. `renderBoardHtml` fills
   // this in by default, but we build the model ourselves below and would
@@ -93,10 +127,15 @@ export async function runBoard(
   const sceneCount = model.scenes.length;
   out(
     `board: ${pickCount} pick${pickCount === 1 ? '' : 's'} · ` +
-      `${sceneCount} Lounge scene${sceneCount === 1 ? '' : 's'}`,
+      `${sceneCount} Lounge scene${sceneCount === 1 ? '' : 's'}` +
+      (source === null ? '' : ` · ${source.label} draft`),
   );
   if (sceneCount === 0) {
-    out('  no Reactions yet — direct one with `npm run lounge -- simulate --next`');
+    out(
+      source?.label === 'live'
+        ? '  no Reactions yet — `npm run lounge -- watch` directs them as picks land'
+        : '  no Reactions yet — direct one with `npm run lounge -- simulate --next`',
+    );
   }
   out(written);
 

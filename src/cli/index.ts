@@ -206,7 +206,10 @@ export function buildProgram(): Command {
     .description('Build the desktop draft board — every pick beside the whole Lounge transcript')
     .addHelpText(
       'after',
-      '\nWrites output/board.html plus a headshots/ folder it references — keep the\n' +
+      '\nBoards the live draft once `watch` has recorded one, otherwise the Simulation.\n' +
+        'The summary line says which. It is a static file, so rebuild it to see new\n' +
+        'picks — it does not refresh itself.\n\n' +
+        'Writes output/board.html plus a headshots/ folder it references — keep the\n' +
         'two together. No server and no network, but not a single file: each photo is\n' +
         'stored once and shared across every scene, which keeps a full board small.\n' +
         'Every pick is listed; the ones that have a Reaction jump the transcript to\n' +
@@ -217,6 +220,7 @@ export function buildProgram(): Command {
         '  npm run lounge -- board --limit 60          the last 60 picks only\n' +
         '  npm run lounge -- board --out /tmp/draft.html\n',
     )
+    .option('--picks <file>', 'board this picks file instead of the auto-detected draft')
     .option('--limit <n>', 'show only the last N picks', parseIntOption)
     .option('--out <file>', 'write to this path instead of output/board.html')
     .option('--open', 'open the built board')

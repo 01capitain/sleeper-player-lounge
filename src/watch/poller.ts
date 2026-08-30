@@ -24,6 +24,8 @@
 import { normalizePicks } from '../import/picks.js';
 import type { PlayerIndex } from '../import/players.js';
 import { hasProcessed, loadState, type PersistOptions } from '../lounge/persist.js';
+import { livePicksFile } from '../paths.js';
+import { writeJsonl } from '../util/jsonl.js';
 import type {
   SleeperDraft,
   SleeperDraftPick,
@@ -41,6 +43,18 @@ export const MIN_POLITE_INTERVAL_SECONDS = 20;
 
 /** Draft statuses that mean "nothing has happened yet". */
 const NOT_STARTED = new Set(['pre_draft', 'scheduled']);
+
+/**
+ * Overwrite `data/lounge/picks.jsonl` with the draft as it currently stands.
+ *
+ * Overwrite rather than append: the API hands back the whole draft on every
+ * poll, which makes this the one file in the Lounge that needs no dedupe.
+ * Exported so `runWatch` can wire it in — `pollOnce` never reaches for it
+ * itself, so a test that forgets to stub it still cannot write to `data/`.
+ */
+export function recordLivePicks(picks: readonly Pick[]): Promise<void> {
+  return writeJsonl(livePicksFile, [...picks]);
+}
 
 /**
  * The slice of `SleeperClient` the poller needs. Narrow on purpose: a test
@@ -86,6 +100,14 @@ export interface PollOnceOptions {
   /** Defaults to the persistence layer's `hasProcessed`. */
   isProcessed?: (eventId: string) => Promise<boolean>;
   persist?: PersistOptions;
+  /**
+   * Records the draft's Picks so `lounge board` can render the live draft.
+   *
+   * There is deliberately NO default: `pollOnce` is called by tests that must
+   * not touch `data/`, so the filesystem side effect is the caller's to opt
+   * into. `runWatch` wires in `recordLivePicks`.
+   */
+  recordPicks?: (picks: readonly Pick[]) => Promise<void>;
 }
 
 export interface PollResult {
@@ -148,6 +170,16 @@ export async function pollOnce(opts: PollOnceOptions): Promise<PollResult> {
     users,
     draftOrder: draft.draft_order ?? null,
   });
+
+  // Before processing, not after: with `--sync` the per-Pick commit happens
+  // inside `process`, so recording first is what keeps the board and the
+  // transcript in the same commit rather than one poll apart.
+  if (picks.length > 0 && opts.recordPicks) {
+    await opts.recordPicks(picks).catch((error: unknown) => {
+      // The board is a viewing surface; failing to update it must not stop a draft.
+      log.warn('could not record live picks for the board', error);
+    });
+  }
 
   const candidates = picks
     .filter((pick) => pick.pickNo > opts.lastProcessedPickNo)

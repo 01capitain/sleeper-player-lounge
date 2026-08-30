@@ -34,6 +34,15 @@ export const loungeDir = path.join(dataDir, 'lounge');
 export const loungeStateFile = path.join(loungeDir, 'state.json');
 export const loungeMessagesFile = path.join(loungeDir, 'messages.jsonl');
 export const loungeReactionsFile = path.join(loungeDir, 'reactions.jsonl');
+/**
+ * The live draft's Picks, as last seen by `lounge watch`.
+ *
+ * The watcher reads Picks from the API and never needed them on disk — but the
+ * board does, and it cannot ask Sleeper. Writing them here (rather than beside
+ * the simulation) puts them inside the `data/lounge` pathspec that `--sync`
+ * commits, so a board built on the second machine shows the same draft.
+ */
+export const livePicksFile = path.join(loungeDir, 'picks.jsonl');
 
 // --- simulation -------------------------------------------------------------
 export const simulationDir = path.join(dataDir, 'simulation');
@@ -83,6 +92,7 @@ export const paths = {
   loungeStateFile,
   loungeMessagesFile,
   loungeReactionsFile,
+  livePicksFile,
   simulationDir,
   selectedDraftFile,
   simulationPicksFile,
