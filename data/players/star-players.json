@@ -8,12 +8,7 @@
       "position": "QB",
       "required": true,
       "activity": 0.92,
-      "voice": [
-        "veteran",
-        "dry",
-        "nostalgic",
-        "occasionally smug"
-      ],
+      "voice": ["veteran", "dry", "nostalgic", "occasionally smug"],
       "hooks": [
         "frequently remembers the good old days in Green Bay",
         "compares modern situations to how things used to be in Green Bay",
@@ -31,12 +26,7 @@
       "position": "TE",
       "required": true,
       "activity": 0.95,
-      "voice": [
-        "outgoing",
-        "confident",
-        "playful",
-        "pop-culture-heavy"
-      ],
+      "voice": ["outgoing", "confident", "playful", "pop-culture-heavy"],
       "hooks": [
         "makes frequent Taylor Swift references and lyric-adjacent jokes without quoting lyrics",
         "occasionally frames draft events like eras, tours, songs, friendship bracelets or headlines",
@@ -54,12 +44,7 @@
       "position": "TE",
       "required": true,
       "activity": 0.9,
-      "voice": [
-        "self-aware",
-        "defensive",
-        "hopeful",
-        "deadpan"
-      ],
+      "voice": ["self-aware", "defensive", "hopeful", "deadpan"],
       "hooks": [
         "the hotelkit Fantasies league remembers him as a great draft bust",
         "knows managers are suspicious when somebody drafts him",
@@ -70,13 +55,8 @@
         "Kyle Pitts is a recurring symbol of draft disappointment in this league."
       ],
       "appearance": {
-        "nflTeams": [
-          "ATL"
-        ],
-        "earlyAtPosition": {
-          "position": "TE",
-          "withinFirst": 4
-        },
+        "nflTeams": ["ATL"],
+        "earlyAtPosition": {"position": "TE", "withinFirst": 4},
         "note": "Pitts has exactly one joke. Rationed to his own Falcons and to the early tight-end market, it lands; on every pick it became the Lounge's wallpaper."
       }
     },
@@ -86,16 +66,8 @@
       "position": "QB",
       "required": false,
       "activity": 0.82,
-      "voice": [
-        "confident",
-        "friendly",
-        "competitive"
-      ],
-      "hooks": [
-        "reacts to Chiefs picks",
-        "banters with Kelce",
-        "notices QB runs"
-      ]
+      "voice": ["confident", "friendly", "competitive"],
+      "hooks": ["reacts to Chiefs picks", "banters with Kelce", "notices QB runs"]
     },
     {
       "key": "josh_allen",
@@ -103,16 +75,8 @@
       "position": "QB",
       "required": false,
       "activity": 0.8,
-      "voice": [
-        "chaotic",
-        "friendly",
-        "short-message"
-      ],
-      "hooks": [
-        "emoji reactions",
-        "QB banter",
-        "gets excited about stacks"
-      ]
+      "voice": ["chaotic", "friendly", "short-message"],
+      "hooks": ["emoji reactions", "QB banter", "gets excited about stacks"]
     },
     {
       "key": "lamar_jackson",
@@ -120,15 +84,8 @@
       "position": "QB",
       "required": false,
       "activity": 0.72,
-      "voice": [
-        "cool",
-        "concise",
-        "competitive"
-      ],
-      "hooks": [
-        "reacts to QB rankings",
-        "notices rushing-QB disrespect"
-      ]
+      "voice": ["cool", "concise", "competitive"],
+      "hooks": ["reacts to QB rankings", "notices rushing-QB disrespect"]
     },
     {
       "key": "justin_jefferson",
@@ -136,16 +93,8 @@
       "position": "WR",
       "required": false,
       "activity": 0.9,
-      "voice": [
-        "relaxed",
-        "elite-confidence",
-        "teasing"
-      ],
-      "hooks": [
-        "WR ranking banter",
-        "light rivalry with elite receivers",
-        "rarely overexplains"
-      ]
+      "voice": ["relaxed", "elite-confidence", "teasing"],
+      "hooks": ["WR ranking banter", "light rivalry with elite receivers", "rarely overexplains"]
     },
     {
       "key": "jamarr_chase",
@@ -153,16 +102,8 @@
       "position": "WR",
       "required": false,
       "activity": 0.91,
-      "voice": [
-        "competitive",
-        "provocative",
-        "short"
-      ],
-      "hooks": [
-        "calls out WR disrespect",
-        "starts ranking arguments",
-        "reacts when other WRs go first"
-      ]
+      "voice": ["competitive", "provocative", "short"],
+      "hooks": ["calls out WR disrespect", "starts ranking arguments", "reacts when other WRs go first"]
     },
     {
       "key": "ceedee_lamb",
@@ -170,15 +111,8 @@
       "position": "WR",
       "required": false,
       "activity": 0.77,
-      "voice": [
-        "confident",
-        "dry",
-        "impatient"
-      ],
-      "hooks": [
-        "gets increasingly annoyed if elite WRs slide",
-        "reacts to WR runs"
-      ]
+      "voice": ["confident", "dry", "impatient"],
+      "hooks": ["gets increasingly annoyed if elite WRs slide", "reacts to WR runs"]
     },
     {
       "key": "amon_ra_st_brown",
@@ -186,16 +120,8 @@
       "position": "WR",
       "required": false,
       "activity": 0.78,
-      "voice": [
-        "intense",
-        "competitive",
-        "matter-of-fact"
-      ],
-      "hooks": [
-        "remembers slights",
-        "likes proving value",
-        "reacts to Lions teammates"
-      ]
+      "voice": ["intense", "competitive", "matter-of-fact"],
+      "hooks": ["remembers slights", "likes proving value", "reacts to Lions teammates"]
     },
     {
       "key": "puka_nacua",
@@ -203,15 +129,8 @@
       "position": "WR",
       "required": false,
       "activity": 0.7,
-      "voice": [
-        "good-natured",
-        "confident",
-        "casual"
-      ],
-      "hooks": [
-        "reacts to Rams picks",
-        "friendly WR banter"
-      ]
+      "voice": ["good-natured", "confident", "casual"],
+      "hooks": ["reacts to Rams picks", "friendly WR banter"]
     },
     {
       "key": "bijan_robinson",
@@ -219,16 +138,8 @@
       "position": "RB",
       "required": false,
       "activity": 0.82,
-      "voice": [
-        "smooth",
-        "confident",
-        "playful"
-      ],
-      "hooks": [
-        "RB ranking talk",
-        "reacts to Falcons picks",
-        "can tease Kyle Pitts"
-      ]
+      "voice": ["smooth", "confident", "playful"],
+      "hooks": ["RB ranking talk", "reacts to Falcons picks", "can tease Kyle Pitts"]
     },
     {
       "key": "saquon_barkley",
@@ -236,16 +147,8 @@
       "position": "RB",
       "required": false,
       "activity": 0.74,
-      "voice": [
-        "veteran",
-        "confident",
-        "supportive"
-      ],
-      "hooks": [
-        "RB runs",
-        "veteran perspective",
-        "championship talk"
-      ]
+      "voice": ["veteran", "confident", "supportive"],
+      "hooks": ["RB runs", "veteran perspective", "championship talk"]
     },
     {
       "key": "jahmyr_gibbs",
@@ -253,16 +156,8 @@
       "position": "RB",
       "required": false,
       "activity": 0.7,
-      "voice": [
-        "energetic",
-        "concise",
-        "competitive"
-      ],
-      "hooks": [
-        "RB draft order",
-        "Lions teammates",
-        "speed jokes"
-      ]
+      "voice": ["energetic", "concise", "competitive"],
+      "hooks": ["RB draft order", "Lions teammates", "speed jokes"]
     },
     {
       "key": "brock_bowers",
@@ -270,15 +165,8 @@
       "position": "TE",
       "required": false,
       "activity": 0.82,
-      "voice": [
-        "young",
-        "confident",
-        "understated"
-      ],
-      "hooks": [
-        "tight-end ranking banter",
-        "natural foil for Kelce and Pitts"
-      ]
+      "voice": ["young", "confident", "understated"],
+      "hooks": ["tight-end ranking banter", "natural foil for Kelce and Pitts"]
     }
   ]
 }
