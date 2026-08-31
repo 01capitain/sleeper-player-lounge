@@ -24,7 +24,9 @@
 import { normalizePicks } from '../import/picks.js';
 import type { PlayerIndex } from '../import/players.js';
 import { hasProcessed, loadState, type PersistOptions } from '../lounge/persist.js';
-import { livePicksFile } from '../paths.js';
+import { liveDraftFile, livePicksFile } from '../paths.js';
+import { coerceSeason } from '../sleeper/discovery.js';
+import { writeJson } from '../util/json.js';
 import { writeJsonl } from '../util/jsonl.js';
 import type {
   SleeperDraft,
@@ -32,7 +34,7 @@ import type {
   SleeperLeague,
   SleeperUser,
 } from '../sleeper/types.js';
-import type { AppConfig, Pick } from '../types.js';
+import type { AppConfig, DraftStatus, DraftType, Pick, SelectedDraft } from '../types.js';
 import { log } from '../util/log.js';
 import type { ProcessPickResult } from '../cli/pipeline.js';
 
@@ -54,6 +56,45 @@ const NOT_STARTED = new Set(['pre_draft', 'scheduled']);
  */
 export function recordLivePicks(picks: readonly Pick[]): Promise<void> {
   return writeJsonl(livePicksFile, [...picks]);
+}
+
+/**
+ * Write the watched draft's identity to `data/lounge/draft.json`.
+ *
+ * The board reads it to answer two questions it cannot ask Sleeper: whose draft
+ * is this, and is a live draft being followed at all. The second matters most at
+ * pick zero — the live picks file is still empty then, and without this the
+ * board silently falls back to the Simulation and shows the wrong league's
+ * draft. Recorded on every poll, so `status` and `totalPicks` stay current.
+ */
+export function recordLiveDraft(
+  draft: SleeperDraft,
+  target: WatchTarget,
+  totalPicks = 0,
+): Promise<void> {
+  return writeJson(liveDraftFile, toLiveDraft(draft, target, totalPicks));
+}
+
+/** Project a live `SleeperDraft` onto the same shape `selected-draft.json` uses. */
+export function toLiveDraft(
+  draft: SleeperDraft,
+  target: WatchTarget,
+  totalPicks = 0,
+): SelectedDraft {
+  const settings = draft.settings ?? {};
+  const slotCount = Object.keys(draft.slot_to_roster_id ?? {}).length;
+  return {
+    leagueId: target.leagueId,
+    leagueName: target.leagueName,
+    draftId: target.draftId,
+    season: coerceSeason(draft.season, target.season),
+    status: (draft.status ?? 'unknown') as DraftStatus,
+    type: (draft.type ?? 'snake') as DraftType,
+    rounds: settings.rounds ?? 0,
+    teams: settings.teams ?? slotCount,
+    selectedAt: new Date().toISOString(),
+    totalPicks,
+  };
 }
 
 /**
@@ -108,6 +149,13 @@ export interface PollOnceOptions {
    * into. `runWatch` wires in `recordLivePicks`.
    */
   recordPicks?: (picks: readonly Pick[]) => Promise<void>;
+  /**
+   * Records which draft is being watched, so `lounge board` boards it from
+   * pick zero instead of falling back to the Simulation. No default, for the
+   * same reason `recordPicks` has none: `pollOnce` must not touch `data/`
+   * unless the caller asked it to. `runWatch` wires in `recordLiveDraft`.
+   */
+  recordDraft?: (draft: SleeperDraft, target: WatchTarget, totalPicks: number) => Promise<void>;
 }
 
 export interface PollResult {
@@ -137,6 +185,10 @@ export async function pollOnce(opts: PollOnceOptions): Promise<PollResult> {
 
   const draft = await client.getDraft(target.draftId, fresh);
   const status = draft.status ?? 'unknown';
+
+  // Before the status branch returns: a draft nobody has picked in yet is still
+  // the draft being followed, and the board has to know that to title itself.
+  if (opts.recordDraft) await recordDraftQuietly(opts.recordDraft, draft, target, 0);
 
   if (NOT_STARTED.has(status)) {
     log.info(
@@ -174,6 +226,8 @@ export async function pollOnce(opts: PollOnceOptions): Promise<PollResult> {
   // Before processing, not after: with `--sync` the per-Pick commit happens
   // inside `process`, so recording first is what keeps the board and the
   // transcript in the same commit rather than one poll apart.
+  if (opts.recordDraft) await recordDraftQuietly(opts.recordDraft, draft, target, picks.length);
+
   if (picks.length > 0 && opts.recordPicks) {
     await opts.recordPicks(picks).catch((error: unknown) => {
       // The board is a viewing surface; failing to update it must not stop a draft.
@@ -216,6 +270,18 @@ export async function pollOnce(opts: PollOnceOptions): Promise<PollResult> {
     duplicates,
     lastProcessedPickNo: highWater,
   };
+}
+
+/** The board is a viewing surface; failing to describe it must not stop a draft. */
+async function recordDraftQuietly(
+  record: NonNullable<PollOnceOptions['recordDraft']>,
+  draft: SleeperDraft,
+  target: WatchTarget,
+  totalPicks: number,
+): Promise<void> {
+  await record(draft, target, totalPicks).catch((error: unknown) => {
+    log.warn('could not record the live draft for the board', error);
+  });
 }
 
 // ---------------------------------------------------------------------------

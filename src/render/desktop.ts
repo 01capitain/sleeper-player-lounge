@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../config.js';
 import {
+  liveDraftFile,
+  livePicksFile,
   loungeReactionsFile,
   repoRoot,
   selectedDraftFile,
@@ -311,9 +313,8 @@ export function formatSceneTime(createdAt: string | null | undefined): string | 
 export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<BoardModel> {
   if (opts.model) return opts.model;
 
-  const allPicks = opts.picks
-    ? [...opts.picks]
-    : await readJsonl<Pick>(opts.picksFile ?? simulationPicksFile);
+  const picksFile = opts.picksFile ?? simulationPicksFile;
+  const allPicks = opts.picks ? [...opts.picks] : await readJsonl<Pick>(picksFile);
   allPicks.sort((a, b) => a.pickNo - b.pickNo);
 
   const limit = opts.limit;
@@ -399,7 +400,7 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
     });
   }
 
-  const draft = opts.draft !== undefined ? opts.draft : await readSelectedDraft();
+  const draft = opts.draft !== undefined ? opts.draft : await readDraftFor(allPicks, picksFile);
   const leagueName = draft?.leagueName ?? 'Draft';
   const season = draft?.season ?? picks[0]?.season ?? new Date().getUTCFullYear();
 
@@ -439,6 +440,13 @@ export async function buildBoardModel(opts: BuildBoardOptions = {}): Promise<Boa
  *    even though his own bubble now names his manager.
  *  - **a clock** on each bubble, `createdAt + delayMs`, so the transcript reads
  *    as the evening it was.
+ *  - **the manager's current name** on the announcement card, taken from the
+ *    live Pick rather than from the Reaction that froze it. Sleeper lets a
+ *    manager rename his team mid-draft, and one did here between pick one and
+ *    the poll after it: the row said 'Gibbs Doch Gar Nicht' while the scene
+ *    beside it still said 'Ja’Marr-io Kart Chase', which reads as two managers.
+ *    Only the card is refreshed — the dialogue is what the Director wrote and
+ *    is never rewritten, so a line that names the old team keeps naming it.
  */
 function applyLoungeChrome(
   payload: RenderPayload,
@@ -453,6 +461,9 @@ function applyLoungeChrome(
   };
   const nflChip = buildTeamChip(subjectMeta);
   if (nflChip) payload.pick.teamChip = nflChip;
+
+  const currentManager = pick.managerName?.trim();
+  if (currentManager) payload.pick.managerName = currentManager;
 
   for (const row of payload.reactions) {
     const chip = ownerChipFor(owners.get(row.speakerPlayerId), pick.pickNo);
@@ -474,8 +485,33 @@ function timelineOptionsFrom(opts: BuildBoardOptions): TimelineOptions {
   return resolved;
 }
 
-async function readSelectedDraft(): Promise<SelectedDraft | null> {
-  return (await readJsonIfExists<SelectedDraft>(selectedDraftFile)) ?? null;
+/**
+ * The draft descriptor that belongs to the Picks on this board.
+ *
+ * Two drafts can be on disk at once — the live one `watch` claims and the
+ * Simulation `setup` selected — and reading the wrong one is how a live board
+ * ends up headed "Defensive Bros — 2026 draft board · 14 teams". Matching on
+ * `draftId` settles it whenever there is a Pick to match against; before the
+ * first Pick lands there is not, so the picks file decides instead.
+ */
+async function readDraftFor(
+  picks: readonly Pick[],
+  picksFile: string,
+): Promise<SelectedDraft | null> {
+  const [live, simulation] = await Promise.all([
+    readJsonIfExists<SelectedDraft>(liveDraftFile),
+    readJsonIfExists<SelectedDraft>(selectedDraftFile),
+  ]);
+
+  const draftId = picks[0]?.draftId;
+  if (draftId !== undefined) {
+    const matched = [live, simulation].find((entry) => entry?.draftId === draftId);
+    if (matched) return matched;
+  }
+
+  return path.resolve(picksFile) === livePicksFile
+    ? (live ?? simulation ?? null)
+    : (simulation ?? live ?? null);
 }
 
 /**

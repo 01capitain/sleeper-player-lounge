@@ -38,16 +38,60 @@ export const CHAMPIONSHIP_PLACEMENT = 1;
  * be joined through `roster.owner_id`. `metadata.team_name` is frequently absent,
  * so the fallback chain is team name -> display name -> username -> the raw id.
  */
-export function managerNameIndex(users: readonly SleeperUser[] | null | undefined): Record<string, string> {
+export function managerNameIndex(
+  users: readonly SleeperUser[] | null | undefined,
+  current: Record<string, string> = {},
+): Record<string, string> {
   const index: Record<string, string> = {};
-  if (!Array.isArray(users)) return index;
-  for (const user of users) {
-    if (user === null || typeof user.user_id !== 'string') continue;
-    const teamName = user.metadata?.['team_name'];
-    index[user.user_id] =
-      nonEmpty(teamName) ?? nonEmpty(user.display_name) ?? nonEmpty(user.username) ?? user.user_id;
+  if (Array.isArray(users)) {
+    for (const user of users) {
+      if (user === null || typeof user.user_id !== 'string') continue;
+      const teamName = user.metadata?.['team_name'];
+      index[user.user_id] =
+        nonEmpty(teamName) ?? nonEmpty(user.display_name) ?? nonEmpty(user.username) ?? user.user_id;
+    }
+  }
+  return applyCurrentNames(index, current);
+}
+
+/**
+ * Overlay the names those same managers use *today* onto one season's index.
+ *
+ * Sleeper scopes `metadata.team_name` per league, so a manager who renames his
+ * team mid-draft leaves every prior season holding the old name — verified: the
+ * 2026 hotelkit league returns 'Gibbs Doch Gar Nicht' for the user whose 2025
+ * league still returns 'Ja’Marr-io Kart Chase'. The Lounge is a live
+ * draft-night chat and names people the way Sleeper names them right now, so a
+ * memory that calls the same manager something else reads as a different
+ * person.
+ *
+ * Only names win, never ids: a current entry that fell all the way back to the
+ * raw `user_id` carries no name, so the season's own name is the better one.
+ * Managers who have since left the league appear in no current index and keep
+ * the name they had, which is the right answer for them.
+ */
+export function applyCurrentNames(
+  index: Record<string, string>,
+  current: Record<string, string>,
+): Record<string, string> {
+  for (const [userId, name] of Object.entries(current)) {
+    if (name === userId) continue;
+    index[userId] = name;
   }
   return index;
+}
+
+/** The names a league's managers go by now, for `managerNameIndex`'s overlay. */
+export async function currentManagerNames(
+  client: SleeperClient,
+  leagueId: string,
+): Promise<Record<string, string>> {
+  try {
+    return managerNameIndex(await client.getLeagueUsers(leagueId, { ttlMs: 0 }));
+  } catch (error) {
+    log.warn(`could not read current manager names for league ${leagueId}`, error);
+    return {};
+  }
 }
 
 /**
@@ -108,6 +152,12 @@ export function findChampionRosterId(
 export interface ImportChampionsOptions {
   /** How far back to follow `previous_league_id`. */
   maxSeasons?: number;
+  /**
+   * The names managers go by today, overlaid onto every season. Defaults to the
+   * users of `leagueId` — the head of the chain, i.e. the season being drafted.
+   * Pass `{}` to keep each season's own names.
+   */
+  currentNames?: Record<string, string>;
   /** Injectable clock so tests get a stable `generatedAt`. */
   now?: Date;
 }
@@ -123,10 +173,11 @@ export async function importChampions(
   options: ImportChampionsOptions = {},
 ): Promise<ChampionsFile> {
   const chain = await walkLeagueChain(client, leagueId, options.maxSeasons ?? MAX_CHAIN_LENGTH);
+  const current = options.currentNames ?? (await currentManagerNames(client, leagueId));
   const championshipRosters: ChampionsFile['championshipRosters'] = {};
 
   for (const league of chain) {
-    const entry = await championshipFor(client, league);
+    const entry = await championshipFor(client, league, current);
     if (entry === null) continue;
     const key = String(entry.season);
     // Newest wins: the chain is walked newest-first, so never overwrite.
@@ -143,6 +194,7 @@ export async function importChampions(
 async function championshipFor(
   client: SleeperClient,
   league: SleeperLeague,
+  current: Record<string, string>,
 ): Promise<ChampionsFile['championshipRosters'][string] | null> {
   const season = seasonOf(league);
   if (!Number.isFinite(season)) {
@@ -184,7 +236,7 @@ async function championshipFor(
     return null;
   }
 
-  const { managerId, managerName } = managerIdentity(roster, managerNameIndex(users));
+  const { managerId, managerName } = managerIdentity(roster, managerNameIndex(users, current));
   const playerIds = [...new Set(roster.players ?? [])].sort();
 
   return { season, leagueId: league.league_id, managerId, managerName, playerIds };

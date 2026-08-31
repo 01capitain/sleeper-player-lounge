@@ -103,6 +103,7 @@ describe("--sync ordering", () => {
         },
         stdout: () => undefined,
         recordPicks: () => Promise.resolve(),
+        recordDraft: () => Promise.resolve(),
       },
     );
 
@@ -127,6 +128,7 @@ describe("--sync ordering", () => {
         },
         stdout: () => undefined,
         recordPicks: () => Promise.resolve(),
+        recordDraft: () => Promise.resolve(),
       },
     );
 
@@ -158,6 +160,7 @@ describe("--sync ordering", () => {
         processPick: noResult,
         stdout: () => undefined,
         recordPicks: () => Promise.resolve(),
+        recordDraft: () => Promise.resolve(),
       },
     );
 
@@ -190,6 +193,7 @@ describe("--sync failure handling", () => {
           processPick,
           stdout: () => undefined,
           recordPicks: () => Promise.resolve(),
+          recordDraft: () => Promise.resolve(),
         },
       ),
     ).rejects.toThrow(/could not pull the Lounge forward/);
@@ -223,6 +227,7 @@ describe("--sync failure handling", () => {
         },
         stdout: () => undefined,
         recordPicks: () => Promise.resolve(),
+        recordDraft: () => Promise.resolve(),
       },
     );
 
@@ -247,6 +252,7 @@ describe("without --sync", () => {
         processPick: noResult,
         stdout: () => undefined,
         recordPicks: () => Promise.resolve(),
+        recordDraft: () => Promise.resolve(),
       },
     );
 

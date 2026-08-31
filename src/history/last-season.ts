@@ -22,7 +22,7 @@ import type {
 import type { LastSeasonFile, PerformanceLabel, PerformanceOverrides } from '../types.js';
 import { log } from '../util/log.js';
 import { MAX_CHAIN_LENGTH, findLeagueForSeason, walkLeagueChain } from './chain.js';
-import { managerIdentity, managerNameIndex } from './champions.js';
+import { currentManagerNames, managerIdentity, managerNameIndex } from './champions.js';
 import {
   buildPositionRanks,
   classify,
@@ -84,6 +84,11 @@ export interface ImportLastSeasonOptions {
   /** Alternative overrides file. Defaults to `paths.performanceOverridesFile`. */
   overridesFile?: string;
   maxSeasons?: number;
+  /**
+   * The names managers go by today. Defaults to the users of `leagueId` — the
+   * head of the chain, i.e. the season being drafted. See `applyCurrentNames`.
+   */
+  currentNames?: Record<string, string>;
   /** Injectable clock so tests get a stable `generatedAt`. */
   now?: Date;
 }
@@ -124,7 +129,8 @@ export async function importLastSeason(
   const overrides =
     options.overrides ?? (await loadPerformanceOverrides(options.overridesFile));
 
-  const names = managerNameIndex(users);
+  const current = options.currentNames ?? (await currentManagerNames(client, leagueId));
+  const names = managerNameIndex(users, current);
   const finishes = placementsFromBracket(bracket);
   const ranks = buildPositionRanks(seasonInputs(rosters, picks, points));
 

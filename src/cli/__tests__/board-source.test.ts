@@ -4,17 +4,21 @@
  * The bug this pins: `lounge board` used to always read the Simulation picks
  * file. During a live draft that produces a board of the wrong 238 picks whose
  * eventIds match none of the live Reactions — 0 scenes, forever, with no error.
- * `lounge watch` now records the live draft to `data/lounge/picks.jsonl`, and
- * the board prefers it whenever it exists.
+ *
+ * The second half of that bug is the one draft morning hits: keying off the
+ * live *picks* file alone still boards the Simulation while the live draft sits
+ * at zero picks, which is precisely the hour somebody opens the board. So
+ * `lounge watch` claims its draft in `data/lounge/draft.json` before the first
+ * poll, and the claim outranks both picks files.
  */
-import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { livePicksFile, simulationPicksFile } from '../../paths.js';
-import { pollOnce } from '../../watch/poller.js';
+import { liveDraftFile, livePicksFile, simulationPicksFile } from '../../paths.js';
+import { pollOnce, toLiveDraft } from '../../watch/poller.js';
 import { resolvePickSource, runBoard } from '../commands/board.js';
+import { writeJson } from '../../util/json.js';
 import { cleanWorkspaces, makePick, workspace, DRAFT_ID, LEAGUE_ID } from './harness.js';
 
 afterEach(async () => {
@@ -29,10 +33,38 @@ describe('resolvePickSource', () => {
   });
 
   it('falls back to the Simulation when no live draft has been recorded', async () => {
-    // The repo's committed state: a Simulation draft, no live picks yet.
-    const source = await resolvePickSource();
+    const ws = await workspace();
+    const source = await resolvePickSource(undefined, {
+      draftFile: path.join(ws.dir, 'draft.json'),
+      livePicksFile: path.join(ws.dir, 'live.jsonl'),
+      simulationPicksFile,
+    });
     expect(source.label).toBe('simulation');
     expect(source.file).toBe(simulationPicksFile);
+  });
+
+  it('boards the claimed live draft even before its first pick lands', async () => {
+    const ws = await workspace();
+    const draftFile = path.join(ws.dir, 'draft.json');
+    const live = path.join(ws.dir, 'live.jsonl');
+    // Claimed, but not one pick made yet: draft morning.
+    await writeJson(
+      draftFile,
+      toLiveDraft({ status: 'drafting', settings: { rounds: 14, teams: 8 } } as never, {
+        leagueId: LEAGUE_ID,
+        leagueName: 'hotelkit Fantasies',
+        draftId: DRAFT_ID,
+        season: 2026,
+      }),
+    );
+
+    const source = await resolvePickSource(undefined, {
+      draftFile,
+      livePicksFile: live,
+      simulationPicksFile,
+    });
+
+    expect(source).toEqual({ label: 'live', file: live });
   });
 });
 
@@ -45,6 +77,8 @@ describe('the board reports which draft it drew', () => {
         players: {},
         stdout: (line) => lines.push(line),
         render: (outPath) => Promise.resolve(outPath),
+        pickSource: () =>
+          Promise.resolve({ label: 'simulation' as const, file: simulationPicksFile }),
       },
     );
 
@@ -94,6 +128,7 @@ describe('the watcher records the live draft for the board', () => {
 
   it('records nothing while the draft is still pre_draft', async () => {
     const recordPicks = vi.fn(() => Promise.resolve());
+    const recordDraft = vi.fn(() => Promise.resolve());
 
     const result = await pollOnce({
       client: {
@@ -110,10 +145,14 @@ describe('the watcher records the live draft for the board', () => {
       lastProcessedPickNo: 0,
       process: () => Promise.resolve({} as never),
       recordPicks,
+      recordDraft,
     });
 
     expect(result.started).toBe(false);
     expect(recordPicks).not.toHaveBeenCalled();
+    // But the draft is still claimed: the board has to name the right league
+    // while everyone is still waiting for pick one.
+    expect(recordDraft).toHaveBeenCalledOnce();
   });
 
   it('keeps drafting when the board file cannot be written', async () => {
@@ -157,14 +196,15 @@ describe('the watcher records the live draft for the board', () => {
   });
 });
 
-describe('the live picks file lives inside the --sync pathspec', () => {
-  it('is under data/lounge, so a handoff carries the board too', () => {
-    expect(livePicksFile.includes(`${path.sep}data${path.sep}lounge${path.sep}`)).toBe(true);
+describe('the live draft files live inside the --sync pathspec', () => {
+  it('are under data/lounge, so a handoff carries the board too', () => {
+    const loungeDir = `${path.sep}data${path.sep}lounge${path.sep}`;
+    expect(livePicksFile.includes(loungeDir)).toBe(true);
+    expect(liveDraftFile.includes(loungeDir)).toBe(true);
   });
 
-  it('is not the Simulation picks file', async () => {
+  it('are not the Simulation files', () => {
     expect(livePicksFile).not.toBe(simulationPicksFile);
-    // And it genuinely is absent right now, which is why the board says "simulation".
-    await expect(fs.access(livePicksFile)).rejects.toThrow();
+    expect(liveDraftFile).not.toBe(livePicksFile);
   });
 });

@@ -16,11 +16,13 @@ import type { PlayerIndex } from '../../import/players.js';
 import type { PersistOptions } from '../../lounge/persist.js';
 import { launchLoungeBrowser, type LoungeBrowser } from '../../render/browser.js';
 import { sleeper } from '../../sleeper/client.js';
+import type { SleeperDraft } from '../../sleeper/types.js';
 import type { LoungeDirector, Pick, RenderFormat } from '../../types.js';
 import { log } from '../../util/log.js';
 import {
   DEFAULT_INTERVAL_SECONDS,
   MIN_POLITE_INTERVAL_SECONDS,
+  recordLiveDraft,
   recordLivePicks,
   resolveWatchTarget,
   watchDraft,
@@ -89,6 +91,8 @@ export interface WatchDeps {
   sync?: LoungeSync;
   /** Injected in tests so recording the board's picks never writes to `data/`. */
   recordPicks?: (picks: readonly Pick[]) => Promise<void>;
+  /** Injected in tests so recording the live draft never writes to `data/`. */
+  recordDraft?: (draft: SleeperDraft, target: WatchTarget, totalPicks: number) => Promise<void>;
   /** Injected in tests so `--board` never writes an HTML file. */
   buildBoard?: () => Promise<string>;
   /** Pre-built abort signal. The CLI wires SIGINT into this. */
@@ -138,6 +142,7 @@ export async function runWatch(
   // halves: this rewrites the file after every Pick, and `--refresh` makes the
   // open page come back for it.
   const boardRefresh = opts.boardRefresh ?? DEFAULT_BOARD_REFRESH_SECONDS;
+  const recordDraft = deps.recordDraft ?? recordLiveDraft;
   const buildBoard: (() => Promise<string>) | undefined =
     deps.buildBoard ??
     (opts.board === true
@@ -146,6 +151,14 @@ export async function runWatch(
             .outputPath
       : undefined);
   if (buildBoard && deps.buildBoard === undefined) {
+    // Claim the draft before that first build, not on the first poll: the board
+    // identifies the live draft by this file, so without it the page you open on
+    // startup is the Simulation's, and stays that way until the poll lands.
+    await client
+      .getDraft(target.draftId, { ttlMs: 0 })
+      .then((draft) => recordDraft(draft, target, 0))
+      .catch((error: unknown) => log.warn('could not record the live draft for the board', error));
+
     // Build once up front, so there is a file to open before Pick one lands.
     const file = await buildBoard().catch((error: unknown) => {
       log.warn('could not build the initial board', error);
@@ -190,6 +203,10 @@ export async function runWatch(
       // Gives `lounge board` a live draft to render. Without it the board falls
       // back to the Simulation, whose eventIds match no live Reaction.
       recordPicks: deps.recordPicks ?? recordLivePicks,
+      // And which draft those picks belong to. Without it a board built before
+      // pick one has nothing to identify the live draft by, and falls back to
+      // the Simulation — the wrong league, in full.
+      recordDraft,
       ...(opts.once === true ? { once: true } : {}),
       ...(deps.persist ? { persist: deps.persist } : {}),
       onPoll: (result) => {

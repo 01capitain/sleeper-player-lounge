@@ -43,6 +43,15 @@ export const loungeReactionsFile = path.join(loungeDir, 'reactions.jsonl');
  * commits, so a board built on the second machine shows the same draft.
  */
 export const livePicksFile = path.join(loungeDir, 'picks.jsonl');
+/**
+ * The live draft's identity, as last seen by `lounge watch`.
+ *
+ * Same shape as `selected-draft.json` and written for the same reason the live
+ * Picks are: the board cannot ask Sleeper which league it is looking at, and
+ * without this it borrows the Simulation's heading. It sits inside the
+ * `data/lounge` pathspec `--sync` commits, so both machines title it alike.
+ */
+export const liveDraftFile = path.join(loungeDir, 'draft.json');
 
 // --- simulation -------------------------------------------------------------
 export const simulationDir = path.join(dataDir, 'simulation');
@@ -93,6 +102,7 @@ export const paths = {
   loungeMessagesFile,
   loungeReactionsFile,
   livePicksFile,
+  liveDraftFile,
   simulationDir,
   selectedDraftFile,
   simulationPicksFile,

@@ -75,9 +75,46 @@ describe('importLastSeason', () => {
     // Stephan is roster 3 in the 10-team 2025 season and roster 11 in the
     // 14-team 2024 season; the record must carry his user_id either way.
     expect(file.players['A']?.managerId).toBe(U_STEPHAN);
-    expect(file.players['A']?.managerName).toBe('Salzburg Slowpokes');
     expect(file.players['D']?.managerId).toBe(U_MARTA);
     expect(file.players['F']?.managerId).toBe(U_JONAS);
+  });
+
+  describe('the name a memory calls a manager', () => {
+    it('uses the name he goes by now, not the one that season held', async () => {
+      // The bug: Sleeper scopes `team_name` per league, so renaming a team
+      // mid-draft leaves 2025 calling the same manager something else — and a
+      // scene that says 'Salzburg Slowpokes drafted him' while the board says
+      // 'Stephan' reads as two different people. The fixture's 2026 head league
+      // has no team name for him, so 'Stephan' is what Sleeper shows today.
+      const { client } = makeClient(threeSeasonChain());
+      const file = await importLastSeason(client, L2026, { now: NOW, overrides: {} });
+
+      expect(file.players['A']?.managerName).toBe('Stephan');
+      expect(file.players['A']?.managerId).toBe(U_STEPHAN);
+    });
+
+    it('keeps that season\'s own name when no current names are supplied', async () => {
+      const { client } = makeClient(threeSeasonChain());
+      const file = await importLastSeason(client, L2026, {
+        now: NOW,
+        overrides: {},
+        currentNames: {},
+      });
+
+      expect(file.players['A']?.managerName).toBe('Salzburg Slowpokes');
+    });
+
+    it('never trades a real name for a bare user id', async () => {
+      const { client } = makeClient(threeSeasonChain());
+      const file = await importLastSeason(client, L2026, {
+        now: NOW,
+        overrides: {},
+        // What `managerNameIndex` emits for a user with no name at all.
+        currentNames: { [U_STEPHAN]: U_STEPHAN },
+      });
+
+      expect(file.players['A']?.managerName).toBe('Salzburg Slowpokes');
+    });
   });
 
   it('derives teamFinish and champion from the winners bracket', async () => {

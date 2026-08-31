@@ -203,6 +203,59 @@ describe('the board model', () => {
     }
   });
 
+  describe('a manager who renames his team mid-draft', () => {
+    // Sleeper scopes team names per league and lets them change at any time. One
+    // did here between pick one and the poll after it, which left the board row
+    // and the scene beside it naming the same manager two different things.
+    const RENAMED = 'Gibbs Doch Gar Nicht';
+
+    it('is named by the live Pick on the announcement card, not by the frozen Reaction', async () => {
+      const stale = PICKS.find((entry) => entry.pickNo === 3) as Pick;
+      const renamed = { ...stale, managerName: RENAMED };
+      const model = await buildBoardModel(
+        options({
+          picks: PICKS.map((entry) => (entry.pickNo === 3 ? renamed : entry)),
+        }),
+      );
+
+      const scene = model.scenes.find((entry) => entry.pickNo === 3);
+      expect(scene?.payload.pick.managerName).toBe(RENAMED);
+      expect(model.rows.find((row) => row.pickNo === 3)?.managerName).toBe(RENAMED);
+    });
+
+    it('never has the dialogue rewritten underneath him', async () => {
+      const stale = PICKS.find((entry) => entry.pickNo === 3) as Pick;
+      const model = await buildBoardModel(
+        options({
+          picks: PICKS.map((entry) =>
+            entry.pickNo === 3 ? { ...entry, managerName: RENAMED } : entry,
+          ),
+        }),
+      );
+
+      const scene = model.scenes.find((entry) => entry.pickNo === 3);
+      const spoken = REACTIONS.find((entry) => entry.pick.pickNo === 3);
+      expect(scene?.payload.reactions.map((row) => row.text)).toEqual(
+        spoken?.reactions.map((row) => row.text),
+      );
+      expect(stale.managerName).not.toBe(RENAMED);
+    });
+
+    it('falls back to the Reaction when the live Pick carries no name', async () => {
+      const model = await buildBoardModel(
+        options({
+          picks: PICKS.map((entry) =>
+            entry.pickNo === 3 ? { ...entry, managerName: '   ' } : entry,
+          ),
+        }),
+      );
+
+      const scene = model.scenes.find((entry) => entry.pickNo === 3);
+      const spoken = REACTIONS.find((entry) => entry.pick.pickNo === 3);
+      expect(scene?.payload.pick.managerName).toBe(spoken?.pick.managerName);
+    });
+  });
+
   it('orders scenes by pick number so the transcript reads in draft order', async () => {
     const model = await buildBoardModel(
       options({ reactions: [...REACTIONS].reverse() }),

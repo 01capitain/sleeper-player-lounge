@@ -151,8 +151,10 @@ describe('sharedChampionship', () => {
     expect(sharedChampionship('A', 'OLD1', store)).toEqual([
       { season: 2024, managerName: 'Stephan' },
     ]);
+    // 'Stephan', not the 2025 'Salzburg Slowpokes': the fixture's 2026 head
+    // league is where the current name comes from. See `applyCurrentNames`.
     expect(sharedChampionship('A', 'B', store)).toEqual([
-      { season: 2025, managerName: 'Salzburg Slowpokes' },
+      { season: 2025, managerName: 'Stephan' },
     ]);
     expect(sharedChampionship('A', 'D', store)).toEqual([]);
     expect(sharedChampionship('A', 'A', store)).toEqual([]);

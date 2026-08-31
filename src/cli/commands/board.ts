@@ -15,8 +15,9 @@ import path from 'node:path';
 
 import { loadEnrichedPlayers, openFile } from '../pipeline.js';
 import type { PlayerIndex } from '../../import/players.js';
-import { livePicksFile, outputDir, simulationPicksFile } from '../../paths.js';
-import type { Pick } from '../../types.js';
+import { liveDraftFile, livePicksFile, outputDir, simulationPicksFile } from '../../paths.js';
+import type { Pick, SelectedDraft } from '../../types.js';
+import { readJsonIfExists } from '../../util/json.js';
 import { readJsonl } from '../../util/jsonl.js';
 import {
   buildBoardModel,
@@ -52,18 +53,40 @@ export interface PickSource {
 /**
  * Decide which draft to board.
  *
- * `lounge watch` records the live draft to `data/lounge/picks.jsonl`, so once
- * the real draft is under way that file is what anybody opening the board means.
- * Before it exists there is only the Simulation, which is also what a dry run
- * wants. Falling back silently would be the wrong call in exactly the case that
- * matters — a live draft boarded against Simulation picks matches no Reaction
- * and renders an empty transcript — so `runBoard` prints which one it used.
+ * `lounge watch` claims the draft it follows in `data/lounge/draft.json` and
+ * records its Picks to `data/lounge/picks.jsonl`. The claim is what decides,
+ * not the picks: on draft morning the live draft has no picks yet, and keying
+ * off the picks file would board the Simulation's 238 picks under the live
+ * league's name — the wrong draft entirely, in exactly the hour it matters.
+ * An empty live board is the honest answer there.
+ *
+ * The picks file is still accepted on its own, so a `data/lounge` synced from a
+ * machine that predates the claim file keeps working. With neither there is
+ * only the Simulation, which is what a dry run wants. `runBoard` prints which
+ * one it used, because silently boarding the other draft matches no Reaction
+ * and renders an empty transcript.
  */
-export async function resolvePickSource(explicit?: string): Promise<PickSource> {
+export async function resolvePickSource(
+  explicit?: string,
+  files: PickSourceFiles = {},
+): Promise<PickSource> {
   if (explicit !== undefined) return { label: 'explicit', file: path.resolve(explicit) };
-  const live = await readJsonl<Pick>(livePicksFile).catch(() => []);
-  if (live.length > 0) return { label: 'live', file: livePicksFile };
-  return { label: 'simulation', file: simulationPicksFile };
+  const draftFile = files.draftFile ?? liveDraftFile;
+  const live = files.livePicksFile ?? livePicksFile;
+  const simulation = files.simulationPicksFile ?? simulationPicksFile;
+
+  const claimed = await readJsonIfExists<SelectedDraft>(draftFile).catch(() => null);
+  if (claimed?.draftId) return { label: 'live', file: live };
+  const recorded = await readJsonl<Pick>(live).catch(() => []);
+  if (recorded.length > 0) return { label: 'live', file: live };
+  return { label: 'simulation', file: simulation };
+}
+
+/** Path overrides, so a test can resolve a source without reading the repo's own state. */
+export interface PickSourceFiles {
+  draftFile?: string;
+  livePicksFile?: string;
+  simulationPicksFile?: string;
 }
 
 export interface BoardDeps {
@@ -71,6 +94,8 @@ export interface BoardDeps {
   build?: BuildBoardOptions;
   /** ADP-enriched players dataset, for the chat's team/position chips. */
   players?: PlayerIndex;
+  /** Injected in tests, so source resolution never reads the repo's live state. */
+  pickSource?: (explicit?: string) => Promise<PickSource>;
   /** Injected renderer, so a test never has to write a real file. */
   render?: (outPath: string, opts: BuildBoardOptions) => Promise<string>;
   stdout?: (line: string) => void;
@@ -118,7 +143,7 @@ export async function runBoard(
   // Tests inject `build.picks` directly and must not be second-guessed.
   const source =
     build.picks === undefined && build.picksFile === undefined
-      ? await resolvePickSource(opts.picks)
+      ? await (deps.pickSource ?? resolvePickSource)(opts.picks)
       : null;
   if (source) build.picksFile = source.file;
 
