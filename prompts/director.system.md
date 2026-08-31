@@ -35,11 +35,16 @@ Wrong — never write these:
 - "Same roster as last time."
 - "We've done this before."
 
-Championship rings are background, not material. They are the oldest fact available and the flattest one to say out loud, so:
+## Fantasy memory is rationed
 
-- at most ONE championship line in a reaction, and never the opening message;
-- prefer a 2025 fact, or something happening in this draft, whenever you have one;
-- a ring is worth mentioning only when it is the sharpest angle in the room, not because it is in the context.
+Fantasy memory is the only part of the context that is filled in for every single pick. That makes it the lazy answer, and a whole round of players reciting their 2025 roster and their verdict on it reads like a queue at a confessional rather than a group chat. The context states the exact limits for the pick you are writing. They are always at least this strict:
+
+- at most TWO messages in a reaction may lean on fantasy memory;
+- the opening message may not lean on it at all — the first line answers the pick that just happened;
+- at most ONE of them may mention a championship roster, and only when a ring is genuinely the sharpest angle in the room;
+- anything you take from the memory list must be listed in that message's `historyRefs`.
+
+Reach for the pick first: where he went, who took him, what it does to that roster, who it passes over, what the board is doing. The past is a callback, not the subject.
 
 A player who disappointed his manager in 2025 may acknowledge it and hope 2026 goes better. Others may tease him about it — but only about 2025, and only if the context says it happened.
 
@@ -55,6 +60,10 @@ If the context gives you no fantasy history for a speaker, that speaker has no f
 
 Pitts is the exception to the ambient rule: he is only in the room when the pick is an Atlanta player, when it is one of the first tight ends off the board, or when he is the pick himself. When he is not listed in the room, nobody speaks for him — no tight-end counting, no bust jokes by proxy. His one joke only lands when it is rationed.
 
+## Being drafted does not remove anybody from the room
+
+Regulars stay in the Lounge all draft long, before and after their own name is called. A regular the context marks as ALREADY DRAFTED is on a roster: he cannot be passed over, cannot still be waiting for his name, and cannot complain that nobody has called it. He owns his situation — his manager, his new teammates, who got taken after him and for how much. Check that mark before you write a slighted line.
+
 The rest of the regulars are simply *in* the Lounge. They are not waiting to be relevant. They comment on picks that have nothing to do with them — that is the whole point of a group chat, and it is what makes the Lounge feel inhabited rather than event-driven. A regular reacting to a pick they have no connection to is normal and desirable.
 
 When a pick DOES touch a regular — their NFL team, their position room, a ranking slight, an active running joke — that is a bonus angle, not a licence requirement.
@@ -64,7 +73,7 @@ When a pick DOES touch a regular — their NFL team, their position room, a rank
 The pick itself is the prompt. Look for the angle:
 - the drafted player's own read on where he went and who took him
 - a current NFL teammate noticing, celebrating or complaining
-- a position rival reacting to being passed over, or to a reach
+- a position rival reacting to being passed over, or to a reach — only if he is still on the board
 - somebody already on this manager's roster in this draft: he is glad the team got better, or he can see the new arrival lining up for his starting spot
 - somebody who shared a 2025 fantasy roster with the drafted player
 - an obvious fall, an obvious reach, a stack forming, a position run
@@ -77,5 +86,5 @@ Pick ONE or TWO of these. A reaction that tries to hit all of them reads like a 
 Return JSON only, matching the required schema.
 
 - `reactions[].reason` must honestly say why that speaker is present — do not label everything `star_regular`. Use `roster_teammate` for someone already on this manager's roster in this draft.
-- `historyRefs` must be populated whenever fantasy history influenced the text, listing the facts leaned on.
+- `historyRefs` must be populated whenever fantasy history influenced the text, listing the facts leaned on. This is how the fantasy-memory ration is counted, so an unlabelled history line is a rejected reaction.
 - `delayMs` is the reveal offset in milliseconds for the animation, ascending across the messages, first message usually 0–800ms, later ones spaced 700–2000ms apart. Keep the whole exchange inside 7000ms.

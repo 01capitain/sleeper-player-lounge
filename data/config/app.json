@@ -22,6 +22,9 @@
     "targetMessages": 4,
     "maxMessages": 6,
     "maxRegularsPerReaction": 3,
+    "maxHistoryMessages": 2,
+    "maxChampionshipMessages": 1,
+    "allowHistoryInOpeningMessage": false,
     "allowNoOptionalStarReaction": true
   },
   "rendering": {

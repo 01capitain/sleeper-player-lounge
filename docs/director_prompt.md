@@ -34,6 +34,22 @@ Bad:
 
 If a player disappointed his manager in 2025, he may be self-aware and hope the 2026 season goes better. Other players may lightly tease him about the 2025 disappointment.
 
+### The memory ration
+
+Fantasy memory is the only part of the context that is populated for every pick, so left uncapped it becomes the default angle for whole rounds at a time. `data/config/app.json` caps it and `productRuleViolations` enforces the cap, which means a breach costs the Director a retry:
+
+| Rule | Config key | Ships as |
+| --- | --- | --- |
+| Messages per reaction that may lean on fantasy memory | `reactionRules.maxHistoryMessages` | 2 |
+| Of those, messages that may mention a championship roster | `reactionRules.maxChampionshipMessages` | 1 |
+| Whether the opening message may lean on fantasy memory | `reactionRules.allowHistoryInOpeningMessage` | `false` |
+
+A message that leans on fantasy memory must list what it used in `historyRefs`. That field is how the ration is counted, so an unlabelled history line is a rejected reaction.
+
+## Who is still on the board
+
+The context marks every speaker who was already drafted earlier in the same draft. Being drafted does not remove a recurring character from the Lounge — it only changes what he can honestly say. A marked speaker cannot be passed over, cannot still be waiting for his name, and cannot complain that nobody has called it.
+
 ## Recurring-character requirements
 
 ### Aaron Rodgers

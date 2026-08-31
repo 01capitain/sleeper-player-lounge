@@ -29,6 +29,9 @@
  *   14 an Appearance Gate is the only thing that keeps a Regular out, and it
  *      takes his lore out of the room with him
  *   15 the Manager's own roster reacts to what he just drafted
+ *   16 a Pick is always built against the board it belongs to
+ *   17 a player already off the board is marked as such in the room
+ *   18 Fantasy Memory is rationed, never the whole reaction
  *
  * House rules for this suite:
  *   - the real `claude` binary is NEVER spawned; every Director test either uses
@@ -38,7 +41,7 @@
  *   - where randomness is involved the invariant is asserted across many seeds,
  *     never on one lucky case.
  */
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -1458,6 +1461,275 @@ describe("Rule 15 — the Manager's own roster reacts to what he just drafted", 
 });
 
 // ===========================================================================
+// Rule 16 — a Pick is always built against its own board
+// ===========================================================================
+
+describe('Rule 16 — a Pick is always built against the board it belongs to', () => {
+  /** A board recorded where the live watcher writes, not where Simulation does. */
+  async function boardFiles(): Promise<{ live: string; simulation: string }> {
+    const dir = await mkdtemp(path.join(tempRoot, 'boards-'));
+    const live = path.join(dir, 'live-picks.jsonl');
+    const simulation = path.join(dir, 'simulation-picks.jsonl');
+    const board = realPicks.slice(0, 24);
+    await writeFile(live, board.map((pick) => JSON.stringify(pick)).join('\n') + '\n', 'utf8');
+    // A different draft entirely, which must never answer for the live one.
+    await writeFile(
+      simulation,
+      board
+        .map((pick) => JSON.stringify({ ...pick, draftId: 'some-other-draft' }))
+        .join('\n') + '\n',
+      'utf8',
+    );
+    return { live, simulation };
+  }
+
+  /**
+   * The last pick of that board whose Manager already has somebody AND who has
+   * players at his own position ahead of him — so the roster, the position index
+   * and the signals all have something to say.
+   */
+  function lastPickWithRoster(): Pick {
+    const board = realPicks.slice(0, 24);
+    const found = [...board]
+      .reverse()
+      .find(
+        (pick) =>
+          board.some(
+            (prior) => prior.managerId === pick.managerId && prior.pickNo < pick.pickNo,
+          ) &&
+          board.some(
+            (prior) => prior.position === pick.position && prior.pickNo < pick.pickNo,
+          ),
+      );
+    expect(found, 'no pick in the first 24 lands on an existing roster').toBeDefined();
+    return found as Pick;
+  }
+
+  it('finds the prior picks without being handed them', async () => {
+    const files = await boardFiles();
+    const pick = lastPickWithRoster();
+    const context = await buildContext(pick, {
+      config: realConfig,
+      players,
+      starPlayers: realRegulars,
+      relationships: realRelationships,
+      state: realState,
+      recentMessages: [],
+      history: null,
+      pickFiles: [files.live, files.simulation],
+    });
+    expect(context.manager.roster.length).toBeGreaterThan(0);
+    expect(context.offTheBoard.length).toBe(pick.pickNo - 1);
+  });
+
+  it('a board the Context cannot find is not silently an empty draft', async () => {
+    // The live watcher records to `data/lounge/picks.jsonl` and Simulation to
+    // `data/simulation/picks.jsonl`. Reading only one of them fails silently:
+    // the `draftId` filter matches nothing, so every pick of a live draft looks
+    // like the Manager's first, `positionDraftIndex` pins at 1 (the eighth
+    // receiver announced as the first) and every draft signal switches off —
+    // which leaves Fantasy Memory as the only material in the room.
+    const files = await boardFiles();
+    const pick = lastPickWithRoster();
+    const deps: BuildContextDeps = {
+      config: realConfig,
+      players,
+      starPlayers: realRegulars,
+      relationships: realRelationships,
+      state: realState,
+      recentMessages: [],
+      history: null,
+    };
+    const found = await buildContext(pick, {
+      ...deps,
+      pickFiles: [files.live, files.simulation],
+    });
+    const blind = await buildContext(pick, { ...deps, pickFiles: [files.simulation] });
+
+    expect(blind.manager.roster).toEqual([]);
+    expect(blind.offTheBoard).toEqual([]);
+    expect(found.manager.roster).not.toEqual([]);
+    expect(found.signalDetail.positionDraftIndex).toBeGreaterThan(
+      blind.signalDetail.positionDraftIndex ?? 0,
+    );
+    // And the prompt says the opposite of the truth in the blind case.
+    expect(renderUserPrompt(blind)).toMatch(/Nobody yet/);
+    expect(renderUserPrompt(found)).not.toMatch(/Nobody yet/);
+  });
+
+  it('the roster-mate really carries the roster bonus into the room', async () => {
+    // `mergeRelevance` dropped `sharedRosterThisDraft` and
+    // `competesForStartingSpot`, so the strongest signal in the table was worth
+    // nothing on the real path while the formula's own unit test still passed.
+    const pick = lastPickWithRoster();
+    const context = await contextFor(pick);
+    const mate = context.actors.find((actor) => actor.role === 'roster_teammate');
+    expect(mate).toBeDefined();
+    const loudest = Math.max(...realRegulars.map((star) => star.activity));
+    expect(mate?.weight ?? 0).toBeGreaterThan(loudest);
+    expect(mate?.reasons.join(' ')).toMatch(/roster in this draft/);
+  });
+});
+
+// ===========================================================================
+// Rule 17 — a drafted player never plays the passed-over man
+// ===========================================================================
+
+describe('Rule 17 — a player already off the board is marked as such in the room', () => {
+  /** A pick late enough that Regulars have started coming off the board. */
+  const latePick = realPicks[60] as Pick;
+
+  it('every prior pick reaches the Context as an off-the-board fact', async () => {
+    const context = await contextFor(latePick);
+    expect(context.offTheBoard.length).toBe(latePick.pickNo - 1);
+    const first = context.offTheBoard[0];
+    expect(first?.pickNo).toBe(1);
+    expect(first?.managerName).toBeTruthy();
+  });
+
+  it('anyone in the room who is already drafted is marked, with pick and manager', async () => {
+    // Being drafted does not end a Regular's ambient membership (Rule 11); it
+    // only changes what he can honestly say. CeeDee Lamb went at pick 12 of the
+    // live draft and then spent picks 13 to 18 playing the overlooked man,
+    // because nothing in the Context contradicted his profile.
+    let checked = 0;
+    for (const pick of spreadOfPicks(40)) {
+      const context = await contextFor(pick);
+      const taken = new Map(
+        context.offTheBoard.map((ref) => [ref.playerId, ref] as const),
+      );
+      const prompt = renderUserPrompt(context);
+      for (const actor of context.actors) {
+        if (actor.playerId === pick.playerId) continue;
+        const ref = taken.get(actor.playerId);
+        if (!ref) continue;
+        checked += 1;
+        expect(
+          prompt,
+          `${actor.name} went at pick ${ref.pickNo} but the room does not say so`,
+        ).toContain(`ALREADY DRAFTED — he went at pick ${ref.pickNo} to ${ref.managerName}`);
+      }
+    }
+    expect(checked, 'no already-drafted speaker appeared in the sample at all').toBeGreaterThan(0);
+  });
+
+  it('the drafted player himself is never marked as already drafted', async () => {
+    const context = await contextFor(latePick);
+    const prompt = renderUserPrompt(context);
+    const draftedBlock = prompt.split(`### ${latePick.playerName}`)[1]?.split('###')[0] ?? '';
+    expect(draftedBlock).toMatch(/THE DRAFTED PLAYER/);
+    expect(draftedBlock).not.toMatch(/ALREADY DRAFTED/);
+  });
+
+  it('the Director is told what the mark means', () => {
+    expect(systemPrompt).toMatch(/ALREADY DRAFTED/);
+    expect(systemPrompt).toMatch(/cannot be passed over/);
+  });
+});
+
+// ===========================================================================
+// Rule 18 — Fantasy Memory is rationed
+// ===========================================================================
+
+describe('Rule 18 — Fantasy Memory is rationed, never the whole reaction', () => {
+  const pick = pickOf(RODGERS_PLAYER_ID);
+
+  /** A Reaction of `count` messages, the first `historyCount` leaning on history. */
+  function reactionWith(
+    context: BuiltContext,
+    lines: { history?: boolean; championship?: boolean }[],
+  ): Reaction {
+    return {
+      eventId: context.pick.eventId,
+      pick: {
+        season: context.pick.season,
+        pickNo: context.pick.pickNo,
+        round: context.pick.round ?? null,
+        playerId: context.pick.playerId,
+        playerName: context.pick.playerName,
+        managerName: context.pick.managerName,
+      },
+      reactions: lines.map((line, index) => ({
+        speakerPlayerId: context.pick.playerId,
+        speakerName: context.pick.playerName,
+        text: line.history === true ? 'You had me in 2025 and here we are.' : 'Round nine. Fine.',
+        delayMs: index * 900,
+        reason: line.championship === true ? 'championship_history' : 'drafted_player',
+        ...(line.history === true
+          ? {
+              historyRefs: [
+                line.championship === true ? '2023 championship roster' : '2025 roster',
+              ],
+            }
+          : {}),
+      })),
+    } as Reaction;
+  }
+
+  it('at most two messages may lean on fantasy history', async () => {
+    const context = await contextFor(pick);
+    const twice = reactionWith(context, [{}, { history: true }, { history: true }]);
+    expect(productRuleViolations(twice, context, rules)).toEqual([]);
+
+    const thrice = reactionWith(context, [
+      {},
+      { history: true },
+      { history: true },
+      { history: true },
+    ]);
+    expect(productRuleViolations(thrice, context, rules).join(' ')).toMatch(
+      /lean on fantasy history; at most 2 may/,
+    );
+  });
+
+  it('the opening message never leans on fantasy history', async () => {
+    const context = await contextFor(pick);
+    const opener = reactionWith(context, [{ history: true }, {}]);
+    expect(productRuleViolations(opener, context, rules).join(' ')).toMatch(
+      /the opening message .* leans on fantasy history/,
+    );
+  });
+
+  it('at most one of them may mention a championship roster', async () => {
+    const context = await contextFor(pick);
+    const twoRings = reactionWith(context, [
+      {},
+      { history: true, championship: true },
+      { history: true, championship: true },
+    ]);
+    expect(productRuleViolations(twoRings, context, rules).join(' ')).toMatch(
+      /mention a championship roster; at most 1 may/,
+    );
+  });
+
+  it('a reaction that stays off the past is always fine', async () => {
+    const context = await contextFor(pick);
+    const clean = reactionWith(context, [{}, {}, {}, {}]);
+    expect(productRuleViolations(clean, context, rules)).toEqual([]);
+  });
+
+  it('the ration is stated as numbers in the prompt the Director actually gets', async () => {
+    const context = await contextFor(pick, {
+      history: {
+        historyFor: (playerId: string) =>
+          playerId === pick.playerId ? memory2025(playerId) : null,
+      },
+    });
+    const prompt = renderUserPrompt(context, rules);
+    expect(prompt).toMatch(/FANTASY MEMORY IS RATIONED/);
+    expect(prompt).toMatch(/At most 2 messages in this reaction may lean on a fact/);
+    expect(prompt).toMatch(/The opening message may not lean on one at all/);
+    expect(prompt).toMatch(/At most 2 of them may lean on fantasy history, and the first one may not/);
+  });
+
+  it('the config ships the ration, so it is a product decision and not a default', () => {
+    expect(rules.maxHistoryMessages).toBe(2);
+    expect(rules.maxChampionshipMessages).toBe(1);
+    expect(rules.allowHistoryInOpeningMessage).toBe(false);
+  });
+});
+
+// ===========================================================================
 // Championship restraint — a ring is background, not material
 // ===========================================================================
 
@@ -1472,8 +1744,8 @@ describe('Championship history is background: it barely moves the odds', () => {
   });
 
   it('the Director is told to ration championship lines', () => {
-    expect(systemPrompt).toMatch(/at most ONE championship line in a reaction/);
-    expect(systemPrompt).toMatch(/never the opening message/);
+    expect(systemPrompt).toMatch(/at most ONE of them may mention a championship roster/);
+    expect(systemPrompt).toMatch(/the opening message may not lean on it at all/);
   });
 
   it('the prompt repeats the restraint wherever championship facts are listed', async () => {
@@ -1500,6 +1772,6 @@ describe('Championship history is background: it barely moves the odds', () => {
       }),
     );
     expect(prompt).toMatch(/2023: on Max's championship roster/);
-    expect(prompt).toMatch(/use at most one championship line in the whole reaction/);
+    expect(prompt).toMatch(/At most 1 of them may mention a championship roster/);
   });
 });

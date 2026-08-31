@@ -56,9 +56,17 @@ _Avoid_: teammate, roster-mate, squad member
 The intentionally narrow set of historical facts a Speaker may reference: full 2025 roster history, plus championship-roster membership from any season. Nothing else.
 _Avoid_: history, memory, past
 
+**Memory Ration**:
+The cap on how much of one Reaction may rest on Fantasy Memory: at most two Messages, never the opening Message, at most one of them about a championship roster. Fantasy Memory is the only part of the Context that is populated for every Pick, so an uncapped Reaction defaults to it and a whole round of Speakers recites its 2025 verdict. Enforced in code, not asked for in prose.
+_Avoid_: history limit, memory cap
+
 **Championship Membership**:
-Being on a season's winning fantasy roster. The only pre-2025 fact that survives into Fantasy Memory, and deliberately the weakest: it barely raises a Speaker's odds, and a Reaction carries at most one championship line, never as its opening Message.
+Being on a season's winning fantasy roster. The only pre-2025 fact that survives into Fantasy Memory, and deliberately the weakest: it barely raises a Speaker's odds, and the Memory Ration allows one championship line per Reaction, never as its opening Message.
 _Avoid_: title, ring, win
+
+**Off the Board**:
+A player already selected earlier in the current draft, by any Manager. Being drafted never ends a Regular's ambient membership of the Lounge — it changes only what he can honestly say, so the Context marks him and the Director may not write him as passed over or still waiting.
+_Avoid_: taken, gone, unavailable
 
 **Season Literal**:
 The explicit four-digit year a Message must contain whenever it draws on Fantasy Memory. "You had me in 2025" is valid; "back together again" is not.

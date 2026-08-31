@@ -24,6 +24,7 @@
  * injected so tests never touch the filesystem or those modules.
  */
 import {
+  livePicksFile,
   loungeMessagesFile,
   loungeStateFile,
   playersCacheFile,
@@ -124,6 +125,23 @@ export interface SharedRosterLink {
 }
 
 /**
+ * A player already selected earlier in this draft, and the Pick that took him.
+ *
+ * A Regular does not stop being ambient when he is drafted — he is still in the
+ * Lounge for every Pick. What changes is what he can honestly say: a receiver
+ * taken at pick 12 cannot spend pick 18 complaining that nobody has called his
+ * name. Without this fact in the Context he does exactly that, because his
+ * profile tells him to react to receivers going ahead of him and nothing
+ * contradicts it.
+ */
+export interface OffTheBoardRef extends ActorRef {
+  /** Overall pick number he went at. */
+  pickNo: number;
+  /** The Manager who took him. */
+  managerName: string;
+}
+
+/**
  * Extra material the Director prompt uses. Purely additive: a `BuiltContext` is
  * a `LoungeContext`, so nothing downstream has to know about these fields.
  */
@@ -136,6 +154,12 @@ export interface LoungeContextExtras {
    * same order as `manager.roster`, which stays a plain name list.
    */
   managerRosterDetail: ActorRef[];
+  /**
+   * Everyone already taken earlier in this draft, oldest Pick first — every
+   * Manager's roster, not just this one's. The prompt marks anyone in the room
+   * who appears here, so a drafted Regular cannot play the overlooked man.
+   */
+  offTheBoard: OffTheBoardRef[];
   /** The draft signals plus their supporting detail (counts, stack partners). */
   signalDetail: DraftSignalDetail;
   /** Shared 2025 rosters and championship rosters among candidate Speakers. */
@@ -162,6 +186,12 @@ export interface BuildContextDeps {
   recentMessages?: readonly LoungeMessage[];
   /** Picks made before this one, in the same draft. */
   priorPicks?: readonly Pick[];
+  /**
+   * Where to look for those Picks when `priorPicks` is not supplied. Defaults to
+   * the live board then the Simulation board; `draftId` decides which one
+   * answers. Tests point this at temp files.
+   */
+  pickFiles?: readonly string[];
   /** Player names the Manager has already drafted, oldest first. */
   managerRoster?: readonly string[];
   /** `src/history/index.ts`, or `null` to run with no Fantasy Memory at all. */
@@ -200,7 +230,7 @@ export async function buildContext(
   // Filtered rather than trusted: a caller handing over the whole draft must not
   // be able to leak a future Pick into the roster or the signals, which is how a
   // Message ends up referring to something that has not happened yet.
-  const priorPicks = (deps.priorPicks ?? (await loadPriorPicks(pick))).filter(
+  const priorPicks = (deps.priorPicks ?? (await loadPriorPicks(pick, deps.pickFiles))).filter(
     (prior) => prior.draftId === pick.draftId && prior.pickNo < pick.pickNo,
   );
   const history = deps.history === undefined ? await loadHistoryModule() : deps.history;
@@ -225,6 +255,12 @@ export async function buildContext(
   // Their own fantasy team just changed, so they are candidate Speakers rather
   // than only a list of names in the prompt.
   const managerRosterDetail = currentRosterRefs(pick, priorPicks, players, manager.roster);
+
+  // --- who is already off the board -----------------------------------------
+  // Every Manager's picks, not just this one's: a drafted Regular is still in
+  // the room, and this is the fact that keeps him from playing the passed-over
+  // man for the rest of the draft.
+  const offTheBoard = offTheBoardRefs(pick, priorPicks, players);
 
   // --- current NFL teammates of the drafted player --------------------------
   const nflTeammates = resolveNflTeammates(pick, players, teammatesOf);
@@ -329,6 +365,7 @@ export async function buildContext(
     simulated: pick.simulated === true,
     actors,
     managerRosterDetail,
+    offTheBoard,
     signalDetail,
     sharedRosters,
     seed: typeof deps.seed === 'number' ? deps.seed : hashOf(deps.seed ?? pick.eventId),
@@ -461,9 +498,31 @@ async function loadState(): Promise<LoungeState | undefined> {
   return (await readJsonIfExists<LoungeState>(loungeStateFile)) ?? undefined;
 }
 
-async function loadPriorPicks(pick: Pick): Promise<Pick[]> {
-  const rows = await readJsonl<Pick>(simulationPicksFile);
-  return rows.filter((row) => row.draftId === pick.draftId && row.pickNo < pick.pickNo);
+/**
+ * Every Pick made before this one, from whichever board this Pick belongs to.
+ *
+ * BOTH FILES, ALWAYS. A live draft is recorded to `data/lounge/picks.jsonl` by
+ * the watcher; a Simulation replays `data/simulation/picks.jsonl`. Reading only
+ * one of them does not fail loudly — the `draftId` filter simply matches nothing
+ * and the Context comes out as if this were the Manager's first pick of the
+ * draft. That silently empties the roster, pins `positionDraftIndex` at 1 (so
+ * the eighth receiver is announced as the first) and switches off every draft
+ * signal, which leaves Fantasy Memory as the only material in the room. Read
+ * both and let `draftId` decide.
+ */
+async function loadPriorPicks(
+  pick: Pick,
+  files: readonly string[] = [livePicksFile, simulationPicksFile],
+): Promise<Pick[]> {
+  const rows: Pick[] = [];
+  for (const file of files) rows.push(...(await readJsonl<Pick>(file)));
+  const byEvent = new Map<string, Pick>();
+  for (const row of rows) {
+    if (row.draftId !== pick.draftId || row.pickNo >= pick.pickNo) continue;
+    // Both files can hold the same board after a handoff; first write wins.
+    if (!byEvent.has(row.eventId)) byEvent.set(row.eventId, row);
+  }
+  return [...byEvent.values()].sort((a, b) => a.pickNo - b.pickNo);
 }
 
 /**
@@ -711,6 +770,28 @@ function mergeRefs(...lists: ActorRef[][]): ActorRef[] {
  * order and membership, so an injected `managerRoster` (tests, replays) behaves
  * exactly like one derived from the Picks.
  */
+/** Every prior Pick as an `OffTheBoardRef`, oldest first. */
+function offTheBoardRefs(
+  pick: Pick,
+  priorPicks: readonly Pick[],
+  players: Record<string, SleeperPlayer>,
+): OffTheBoardRef[] {
+  const out: OffTheBoardRef[] = [];
+  for (const prior of priorPicks) {
+    if (prior.playerId === pick.playerId) continue;
+    const entry = players[prior.playerId];
+    out.push({
+      playerId: prior.playerId,
+      name: prior.playerName,
+      position: prior.position ?? entry?.position ?? null,
+      nflTeam: prior.nflTeam ?? entry?.team ?? null,
+      pickNo: prior.pickNo,
+      managerName: prior.managerName,
+    });
+  }
+  return out.sort((a, b) => a.pickNo - b.pickNo);
+}
+
 function currentRosterRefs(
   pick: Pick,
   priorPicks: readonly Pick[],

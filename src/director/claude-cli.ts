@@ -35,7 +35,7 @@ import type {
 import { appendJsonl } from '../util/jsonl.js';
 import { log } from '../util/log.js';
 import { validateReaction } from '../validate.js';
-import type { BuiltContext } from '../context/builder.js';
+import type { BuiltContext, OffTheBoardRef } from '../context/builder.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -192,12 +192,22 @@ export interface ClaudeCliDirectorOptions {
   now?: () => Date;
 }
 
-const DEFAULT_RULES: Pick<ReactionRulesConfig, 'minMessages' | 'maxMessages' | 'draftedPlayerMustReact'> =
-  {
-    minMessages: 2,
-    maxMessages: 6,
-    draftedPlayerMustReact: true,
-  };
+const DEFAULT_RULES: Pick<
+  ReactionRulesConfig,
+  | 'minMessages'
+  | 'maxMessages'
+  | 'draftedPlayerMustReact'
+  | 'maxHistoryMessages'
+  | 'maxChampionshipMessages'
+  | 'allowHistoryInOpeningMessage'
+> = {
+  minMessages: 2,
+  maxMessages: 6,
+  draftedPlayerMustReact: true,
+  maxHistoryMessages: 2,
+  maxChampionshipMessages: 1,
+  allowHistoryInOpeningMessage: false,
+};
 
 export class ClaudeCliDirector implements LoungeDirector {
   private readonly model: string;
@@ -250,7 +260,10 @@ export class ClaudeCliDirector implements LoungeDirector {
 
   /** The system + user prompt pair, without spawning anything. */
   buildPrompt(context: LoungeContext): { system: string; user: string } {
-    return buildPrompt(context, { systemPromptFile: this.systemPromptFile });
+    return buildPrompt(context, {
+      systemPromptFile: this.systemPromptFile,
+      rules: { ...DEFAULT_RULES, ...this.rules },
+    });
   }
 
   /**
@@ -261,7 +274,7 @@ export class ClaudeCliDirector implements LoungeDirector {
    * an answer that did not validate.
    */
   async generateReaction(context: LoungeContext): Promise<Reaction> {
-    const basePrompt = renderUserPrompt(context);
+    const basePrompt = renderUserPrompt(context, { ...DEFAULT_RULES, ...this.rules });
     const violations: string[] = [];
     let rawOutput: string | undefined;
 
@@ -492,11 +505,7 @@ export function productRuleViolations(
   // vague form the rule exists to forbid, so it is enforced here rather than
   // left to the prompt.
   for (const message of messages) {
-    const leansOnHistory =
-      (message.historyRefs?.length ?? 0) > 0 ||
-      message.reason === 'fantasy_2025_history' ||
-      message.reason === 'championship_history';
-    if (leansOnHistory && !SEASON_LITERAL.test(message.text)) {
+    if (leansOnHistory(message) && !SEASON_LITERAL.test(message.text)) {
       violations.push(
         `"${message.speakerName}" refers to fantasy history without naming the season: ` +
           `"${message.text}" — any history reference must state the four-digit year`,
@@ -504,7 +513,64 @@ export function productRuleViolations(
     }
   }
 
+  // The Fantasy Memory ration. Fantasy Memory is the only section of the Context
+  // that is populated for every single Pick, so left uncapped it becomes the
+  // default angle: measured over live picks 13-18, the drafted player opened
+  // with his own 2025 roster and verdict in six of six, and the room answered in
+  // kind — a rut the Director itself noticed ("third straight guy confessing his
+  // 2025 in the group chat"). Prose asking for restraint did not hold, so the
+  // ration is enforced here, where a breach costs a retry.
+  const historyMessages = messages.filter((message) => leansOnHistory(message));
+  const maxHistory = merged.maxHistoryMessages ?? 2;
+  if (historyMessages.length > maxHistory) {
+    violations.push(
+      `${historyMessages.length} messages lean on fantasy history; at most ${maxHistory} may. ` +
+        'Keep the sharpest one and put the rest on this pick, this draft or these players',
+    );
+  }
+
+  const championshipMessages = messages.filter((message) => leansOnChampionship(message));
+  const maxChampionship = merged.maxChampionshipMessages ?? 1;
+  if (championshipMessages.length > maxChampionship) {
+    violations.push(
+      `${championshipMessages.length} messages mention a championship roster; at most ` +
+        `${maxChampionship} may. A ring is background, not material`,
+    );
+  }
+
+  const opener = messages[0];
+  if (
+    merged.allowHistoryInOpeningMessage !== true &&
+    opener !== undefined &&
+    leansOnHistory(opener)
+  ) {
+    violations.push(
+      `the opening message ("${opener.speakerName}: ${opener.text}") leans on fantasy history; ` +
+        'the first line answers the pick that just happened. Move the history line later',
+    );
+  }
+
   return violations;
+}
+
+/**
+ * True when a Message draws on Fantasy Memory.
+ *
+ * Keyed on the structured fields only — `historyRefs` and `reason` — never on
+ * the prose. Matching text would flag a line that merely says "2026".
+ */
+function leansOnHistory(message: Reaction['reactions'][number]): boolean {
+  return (
+    (message.historyRefs?.length ?? 0) > 0 ||
+    message.reason === 'fantasy_2025_history' ||
+    message.reason === 'championship_history'
+  );
+}
+
+/** True when a Message draws specifically on a championship roster. */
+function leansOnChampionship(message: Reaction['reactions'][number]): boolean {
+  if (message.reason === 'championship_history') return true;
+  return (message.historyRefs ?? []).some((ref) => /champion|title/i.test(ref));
 }
 
 /** A four-digit season, e.g. `2025`. */
@@ -563,6 +629,8 @@ function retryAddendum(violations: string[]): string {
 
 export interface BuildPromptOptions {
   systemPromptFile?: string;
+  /** The reaction rules the user prompt states as limits. Defaults apply. */
+  rules?: Partial<ReactionRulesConfig>;
 }
 
 /**
@@ -575,7 +643,7 @@ export function buildPrompt(
   const systemFile = options.systemPromptFile ?? directorSystemPromptFile;
   return {
     system: readFileSync(systemFile, 'utf8'),
-    user: renderUserPrompt(context),
+    user: renderUserPrompt(context, options.rules),
   };
 }
 
@@ -587,9 +655,13 @@ export function buildPrompt(
  * for anyone in this room"), because the Fantasy Memory rules turn on exactly
  * that distinction. What is absent from the Context cannot be said.
  */
-export function renderUserPrompt(context: LoungeContext): string {
+export function renderUserPrompt(
+  context: LoungeContext,
+  rules: Partial<ReactionRulesConfig> = {},
+): string {
   const pick = context.pick;
   const extras = context as Partial<BuiltContext>;
+  const merged = { ...DEFAULT_RULES, ...rules };
   const lines: string[] = [];
 
   // --- the pick -------------------------------------------------------------
@@ -654,8 +726,26 @@ export function renderUserPrompt(context: LoungeContext): string {
     lines.push(
       'Any message built on one of these facts must state the season as a four-digit year.',
     );
+    lines.push('');
     lines.push(
-      'Championship rosters are the oldest and flattest fact in this list. Reach for a 2025 fact or for this draft before you reach for a ring, use at most one championship line in the whole reaction, and never open with one.',
+      'FANTASY MEMORY IS RATIONED. It is the one thing every pick has, which is exactly why it cannot carry the reaction — a whole round of players reciting their 2025 roster and their verdict on it reads like a queue at a confessional. This pick, this draft and these players come first; the past is a callback, not the subject.',
+    );
+    const maxHistory = merged.maxHistoryMessages ?? 2;
+    const maxChampionship = merged.maxChampionshipMessages ?? 1;
+    lines.push('');
+    lines.push(
+      `- At most ${maxHistory} message${maxHistory === 1 ? '' : 's'} in this reaction may lean on a fact from the list above. The rest must be about this pick, this draft, this roster or these players.`,
+    );
+    if (merged.allowHistoryInOpeningMessage !== true) {
+      lines.push(
+        '- The opening message may not lean on one at all. The first line answers what just happened.',
+      );
+    }
+    lines.push(
+      `- At most ${maxChampionship} of them may mention a championship roster. A ring is the oldest and flattest fact here; reach for it only when it is genuinely the sharpest angle in the room.`,
+    );
+    lines.push(
+      '- A message that leans on the list must set `historyRefs` to the facts it used. That is how the ration is counted, so an unlabelled history line is a rejected reaction.',
     );
   }
   lines.push('');
@@ -719,7 +809,16 @@ export function renderUserPrompt(context: LoungeContext): string {
   lines.push('## Write the reaction');
   lines.push('');
   lines.push(`- ${pick.playerName} must send at least one message.`);
-  lines.push('- 2 to 6 messages total. Fewer and sharper beats six forced jokes.');
+  lines.push(
+    `- ${merged.minMessages} to ${merged.maxMessages} messages total. Fewer and sharper beats six forced jokes.`,
+  );
+  if ((extras.actors ?? []).length > 0 || (context.regulars ?? []).length > 0) {
+    lines.push(
+      `- At most ${merged.maxHistoryMessages ?? 2} of them may lean on fantasy history${
+        merged.allowHistoryInOpeningMessage !== true ? ', and the first one may not' : ''
+      }.`,
+    );
+  }
   lines.push('- Pick one or two angles from above. A reaction that hits all of them reads like a list.');
   lines.push('- Only the players listed under "Who is in the Lounge" may speak. Managers never speak.');
   lines.push(`- Use exactly this eventId: ${pick.eventId}`);
@@ -733,6 +832,16 @@ function renderRoom(context: LoungeContext): string[] {
   const extras = context as Partial<BuiltContext>;
   const out: string[] = [];
   const seen = new Set<string>();
+  // Anyone in the room who is already off the board. A Regular keeps his ambient
+  // seat after he is drafted — but his profile still tells him to be annoyed
+  // when players at his position go ahead of him, and without this fact nothing
+  // contradicts it. CeeDee Lamb spent picks 13 to 18 of the live draft playing
+  // the overlooked man six picks after he was taken.
+  const offTheBoard = new Map<string, OffTheBoardRef>();
+  for (const ref of extras.offTheBoard ?? []) {
+    offTheBoard.set(ref.playerId, ref);
+    offTheBoard.set(normalize(ref.name), ref);
+  }
 
   const emit = (
     name: string,
@@ -747,6 +856,14 @@ function renderRoom(context: LoungeContext): string[] {
     seen.add(playerId);
     out.push(`### ${name}${describePlayer(position, nflTeam)} — id \`${playerId}\``);
     out.push(headline);
+    const taken = offTheBoard.get(playerId) ?? offTheBoard.get(normalize(name));
+    if (taken && playerId !== context.pick.playerId) {
+      out.push(
+        `ALREADY DRAFTED — he went at pick ${taken.pickNo} to ${taken.managerName}. ` +
+          'He is on a roster, so he is not waiting for his name and cannot be passed over. ' +
+          'He watches this pick as an owner of his own situation, not as a man still on the board.',
+      );
+    }
     if (star) {
       if (star.voice.length > 0) out.push(`Voice: ${star.voice.join(', ')}.`);
       for (const hook of star.hooks) out.push(`- ${hook}`);

@@ -298,9 +298,11 @@ describe('validation and the single retry', () => {
     // new manager, new me." — exactly the vague form the rule forbids.
     const context = await makeContext();
     const vague = validReaction(context);
-    const first = vague.reactions[0] as { text: string; historyRefs?: string[] };
-    first.text = 'New team, new manager, new me.';
-    first.historyRefs = ['was on this manager roster before'];
+    // The second message, not the first: the opening line may not lean on
+    // fantasy history at all, which is a different rule.
+    const second = vague.reactions[1] as { text: string; historyRefs?: string[] };
+    second.text = 'New team, new manager, new me.';
+    second.historyRefs = ['was on this manager roster before'];
 
     expect(productRuleViolations(vague, context).join(' ')).toMatch(/without naming the season/);
   });
@@ -308,9 +310,9 @@ describe('validation and the single retry', () => {
   it('accepts the same reference once it states the year', async () => {
     const context = await makeContext();
     const explicit = validReaction(context);
-    const first = explicit.reactions[0] as { text: string; historyRefs?: string[] };
-    first.text = 'You had me in 2025 and you are really doing this again?';
-    first.historyRefs = ['2025 roster'];
+    const second = explicit.reactions[1] as { text: string; historyRefs?: string[] };
+    second.text = 'You had me in 2025 and you are really doing this again?';
+    second.historyRefs = ['2025 roster'];
 
     expect(productRuleViolations(explicit, context)).toEqual([]);
   });

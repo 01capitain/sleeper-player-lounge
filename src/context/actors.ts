@@ -635,12 +635,20 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
   const optional = [...chosenRegulars, ...weightedSample(otherPool, Math.max(0, capacity), rng)];
   optional.sort((a, b) => b.weight - a.weight);
 
-  // The heaviest drawn Regular takes the reserved seat, ahead of the weight
-  // order — otherwise the roster-mates and relationship candidates, which now
-  // outweigh ambient `activity` by design, could crowd the Regulars out of a
-  // full room entirely.
-  const heaviestRegular = [...chosenRegulars].sort((a, b) => b.weight - a.weight)[0];
-  const fillOrder = heaviestRegular ? [heaviestRegular, ...optional] : optional;
+  // One drawn Regular takes a reserved seat ahead of the weight order —
+  // otherwise the roster-mates and relationship candidates, which outweigh
+  // ambient `activity` by design, crowd the Regulars out of a full room
+  // entirely. The occupant is DRAWN, not ranked: taking the heaviest of the
+  // three would hand the only ambient seat to the loudest Regular in the cast
+  // on every pick, and quiet Regulars like Puka Nacua (0.70) would never reach
+  // a room that already holds a roster-mate. Rule 11 is the ambient promise —
+  // every ungated Regular stays reachable on every pick.
+  const [reservedRegular] = weightedSample(
+    chosenRegulars.map((actor) => ({ item: actor, weight: actor.weight })),
+    1,
+    rng,
+  );
+  const fillOrder = reservedRegular ? [reservedRegular, ...optional] : optional;
 
   for (const actor of fillOrder) {
     if (selected.length >= capacity) break;
@@ -754,6 +762,17 @@ function lookupRelevance(
   return merged;
 }
 
+/**
+ * Merge two relevance records, `extra` winning.
+ *
+ * EVERY FLAG IN `ActorRelevance` MUST BE LISTED HERE. A field left out is
+ * silently dropped, and since this function sits between the pools and
+ * `actorWeight`, dropping one deletes its bonus from the formula without
+ * failing anything: `sharedRosterThisDraft` and `competesForStartingSpot` were
+ * missing, so the strongest signal in the table — the pick landing on your own
+ * fantasy team — was worth nothing, and the roster-mate reasons never reached
+ * the prompt.
+ */
 function mergeRelevance(
   base: Partial<ActorRelevance>,
   extra: Partial<ActorRelevance>,
@@ -762,6 +781,8 @@ function mergeRelevance(
     isNflTeammate: extra.isNflTeammate ?? base.isNflTeammate,
     isPositionRival: extra.isPositionRival ?? base.isPositionRival,
     samePosition: extra.samePosition ?? base.samePosition,
+    sharedRosterThisDraft: extra.sharedRosterThisDraft ?? base.sharedRosterThisDraft,
+    competesForStartingSpot: extra.competesForStartingSpot ?? base.competesForStartingSpot,
     sharedRoster2025: extra.sharedRoster2025 ?? base.sharedRoster2025,
     sharedChampionship: extra.sharedChampionship ?? base.sharedChampionship,
     runningJokeStrength: Math.max(

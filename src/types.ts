@@ -313,6 +313,25 @@ export interface ReactionRulesConfig {
   maxMessages: number;
   maxRegularsPerReaction: number;
   allowNoOptionalStarReaction: boolean;
+  /**
+   * How many Messages in one Reaction may lean on Fantasy Memory. Default 2.
+   *
+   * Fantasy Memory is the one part of the Context that is always populated, so
+   * left uncapped it becomes the default angle for whole rounds: the drafted
+   * player recites his 2025 roster and verdict, and the room answers in kind.
+   * The cap forces the rest of the Reaction onto the Pick that just happened.
+   */
+  maxHistoryMessages?: number;
+  /**
+   * How many of those may be about a championship roster. Default 1 — a ring is
+   * the oldest and flattest fact available (CONTEXT.md, Championship Membership).
+   */
+  maxChampionshipMessages?: number;
+  /**
+   * Whether the opening Message may lean on Fantasy Memory. Default false: the
+   * first line answers the Pick, because the Pick is what just happened.
+   */
+  allowHistoryInOpeningMessage?: boolean;
 }
 
 export type RenderFormat = 'png' | 'gif' | 'mp4' | 'html';
