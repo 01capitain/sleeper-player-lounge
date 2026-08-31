@@ -71,6 +71,12 @@ export interface DraftSignalDetail extends DraftSignals {
   surpriseThreshold?: number;
   /** True when the player slid past his ADP far enough to be disappointed. */
   disappointed?: boolean;
+  /**
+   * 1-based ordinal of the drafted player among everyone taken at his position
+   * in this draft: 1 means he is the first at the position off the board.
+   * Omitted when the position is unknown.
+   */
+  positionDraftIndex?: number;
 }
 
 /**
@@ -109,6 +115,9 @@ export function computeDraftSignalDetail(
 
   const detail: DraftSignalDetail = {};
 
+  const positionIndex = positionDraftIndex(pick, before, players);
+  if (positionIndex !== undefined) detail.positionDraftIndex = positionIndex;
+
   const run = detectPositionRun(pick, before, players, opts);
   if (run) {
     detail.positionRun = run.position;
@@ -139,6 +148,27 @@ export function computeDraftSignalDetail(
 // ---------------------------------------------------------------------------
 // detectors
 // ---------------------------------------------------------------------------
+
+/**
+ * Where this Pick sits in the queue at its own position — the 1st tight end off
+ * the board or the 14th. Counted over the whole draft rather than a window, so
+ * it answers "is this still early at the position?", which is what an Appearance
+ * Gate and a position-scarcity joke both turn on.
+ */
+export function positionDraftIndex(
+  pick: Pick,
+  before: readonly Pick[],
+  players: Record<string, SleeperPlayer> = {},
+): number | undefined {
+  const position = positionOf(pick, players);
+  if (!position) return undefined;
+  let taken = 0;
+  for (const prior of before) {
+    if (prior.playerId === pick.playerId) continue;
+    if (positionOf(prior, players) === position) taken += 1;
+  }
+  return taken + 1;
+}
 
 interface PositionRun {
   position: string;

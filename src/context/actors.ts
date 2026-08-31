@@ -5,6 +5,9 @@
  *
  *   mandatory : the drafted player (always, ranked first — §14 product rule)
  *   strong    : one relevant current NFL teammate, when one exists
+ *   strong    : one player already on the drafting Manager's roster in THIS
+ *               draft, when one exists — the pick landed on his own team, so he
+ *               either welcomes the upgrade or worries about his starting spot
  *   optional  : Regulars, 2025 fantasy teammates, championship teammates,
  *               position rivals, running-joke participants
  *
@@ -19,11 +22,22 @@
  * normal case, and `actorWeight()` is written so that an entirely unconnected
  * Regular still outweighs a connected non-Regular.
  *
+ * THE ONE EXCEPTION: AN APPEARANCE GATE
+ * -------------------------------------
+ * A Regular may carry an `appearance` gate in `star-players.json`. A gated
+ * Regular is not ambient: he enters the pool only on Picks his gate admits
+ * (`gateAllows`). The gate exists for a cast member with a single joke, whose
+ * joke stops being funny at the fifth repetition — Kyle Pitts counting tight
+ * ends on a Round 12 kicker. Being the drafted player always bypasses the gate.
+ * No other relevance signal can open it, and no gate ever applies to a Regular
+ * who has none.
+ *
  * Selection is deterministic given a seed (derived from the Pick's `eventId`),
  * so reruns and tests reproduce exactly. This module decides who is *eligible*;
  * the Director decides who actually speaks.
  */
 import type {
+  AppearanceGate,
   NflTeammate,
   Pick,
   ReactionRulesConfig,
@@ -47,6 +61,7 @@ export interface ActorRef {
 export type ActorRole =
   | 'drafted_player'
   | 'nfl_teammate'
+  | 'roster_teammate'
   | 'regular'
   | 'fantasy_2025_teammate'
   | 'championship_teammate'
@@ -76,6 +91,10 @@ export interface ActorRelevance {
   isPositionRival?: boolean;
   /** Same fantasy position as the drafted player. */
   samePosition?: boolean;
+  /** Already on the drafting Manager's roster in THIS draft. */
+  sharedRosterThisDraft?: boolean;
+  /** Shares the drafted player's fantasy position on that same roster. */
+  competesForStartingSpot?: boolean;
   /** Shared a 2025 fantasy roster with the drafted player. */
   sharedRoster2025?: boolean;
   /** Shared a championship roster with the drafted player, any season. */
@@ -96,13 +115,27 @@ export interface ActorRelevance {
  * dominate a Regular's ambient `activity`.
  */
 export const RELEVANCE_BONUS = {
+  /**
+   * The strongest signal in the formula: this pick just landed on his own
+   * fantasy team. He has an opinion either way, and it is about 2026 rather
+   * than about a past season.
+   */
+  sharedRosterThisDraft: 1.1,
   nflTeammate: 0.9,
   sharedRoster2025: 0.7,
-  sharedChampionship: 0.6,
   positionRival: 0.5,
+  /** On top of `sharedRosterThisDraft`: same roster AND same position. */
+  competesForStartingSpot: 0.45,
   /** Scaled by the joke's `strength`. */
   runningJoke: 0.4,
   samePosition: 0.25,
+  /**
+   * Deliberately small. A ring is the oldest fact in Fantasy Memory and the
+   * least interesting thing anyone in the room can bring up, so it barely moves
+   * the odds — it used to sit at 0.6, which made "we won it together" the
+   * default angle for whole rounds at a time.
+   */
+  sharedChampionship: 0.2,
   requiredRegular: 0.15,
 } as const;
 
@@ -118,6 +151,14 @@ export const BASE_NON_REGULAR_ACTIVITY = 0.35;
 export const BASE_NFL_TEAMMATE_ACTIVITY = 0.5;
 
 /**
+ * Baseline for someone already on the drafting Manager's roster this draft.
+ * With the roster bonus he lands at 0.6 x 2.1 = 1.26 — above the chattiest
+ * Regular — which is the point: the players whose own team just changed are the
+ * ones with something at stake in the pick.
+ */
+export const BASE_ROSTER_TEAMMATE_ACTIVITY = 0.6;
+
+/**
  * `weight = activity * (1 + sum(bonuses))`.
  *
  * `activity` alone is a complete, valid weight — that is the ambient rule in one
@@ -127,6 +168,10 @@ export const BASE_NFL_TEAMMATE_ACTIVITY = 0.5;
 export function actorWeight(activity: number, relevance: ActorRelevance = {}): number {
   const base = clamp01(activity);
   let bonus = 0;
+  if (relevance.sharedRosterThisDraft === true) bonus += RELEVANCE_BONUS.sharedRosterThisDraft;
+  if (relevance.competesForStartingSpot === true) {
+    bonus += RELEVANCE_BONUS.competesForStartingSpot;
+  }
   if (relevance.isNflTeammate === true) bonus += RELEVANCE_BONUS.nflTeammate;
   if (relevance.sharedRoster2025 === true) bonus += RELEVANCE_BONUS.sharedRoster2025;
   if (relevance.sharedChampionship === true) bonus += RELEVANCE_BONUS.sharedChampionship;
@@ -141,6 +186,12 @@ export function actorWeight(activity: number, relevance: ActorRelevance = {}): n
 /** Human-readable justifications for a relevance record, for the prompt. */
 export function relevanceReasons(relevance: ActorRelevance): string[] {
   const out: string[] = [];
+  if (relevance.sharedRosterThisDraft === true) {
+    out.push('already on the drafting manager\'s roster in this draft');
+  }
+  if (relevance.competesForStartingSpot === true) {
+    out.push('plays the drafted player\'s position on that same roster — the starting spot is now contested');
+  }
   if (relevance.isNflTeammate === true) out.push('current NFL teammate of the drafted player');
   if (relevance.sharedRoster2025 === true) out.push('shared a 2025 fantasy roster with the drafted player');
   if (relevance.sharedChampionship === true) out.push('shared a championship roster with the drafted player');
@@ -148,6 +199,50 @@ export function relevanceReasons(relevance: ActorRelevance): string[] {
   else if (relevance.samePosition === true) out.push('plays the same position as the drafted player');
   if ((relevance.runningJokeStrength ?? 0) > 0) out.push('involved in an active running joke');
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Appearance gates — the one exception to the ambient rule
+// ---------------------------------------------------------------------------
+
+/** What a gate is evaluated against: the Pick, plus where it sits at its position. */
+export interface GateSubject {
+  position?: string | null;
+  nflTeam?: string | null;
+  /** 1-based ordinal of the drafted player among his position in this draft. */
+  positionDraftIndex?: number;
+}
+
+/**
+ * Decide whether a gated Regular is admitted to this Pick.
+ *
+ * No gate means always admitted — that is the ambient rule, untouched. A gate
+ * with conditions admits on ANY of them; a gate with no usable condition admits
+ * nobody, because a gate whose data is missing must fail closed. `earlyAtPosition`
+ * needs `positionDraftIndex`: without it we cannot tell the third tight end from
+ * the thirtieth, and guessing would reopen the gate it exists to close.
+ */
+export function gateAllows(
+  gate: AppearanceGate | undefined,
+  subject: GateSubject,
+): boolean {
+  if (!gate) return true;
+  const teams = gate.nflTeams ?? [];
+  if (teams.length > 0 && subject.nflTeam) {
+    const team = subject.nflTeam.trim().toUpperCase();
+    if (teams.some((entry) => entry.trim().toUpperCase() === team)) return true;
+  }
+  const early = gate.earlyAtPosition;
+  if (
+    early &&
+    subject.position &&
+    early.position.trim().toUpperCase() === subject.position.trim().toUpperCase() &&
+    typeof subject.positionDraftIndex === 'number' &&
+    subject.positionDraftIndex <= early.withinFirst
+  ) {
+    return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +305,16 @@ export interface SelectActorsInput {
   starMeta?: Record<string, Partial<ActorRef>>;
   /** Current NFL teammates of the drafted player. */
   nflTeammates?: readonly NflTeammate[];
+  /**
+   * Players the drafting Manager already took in THIS draft. Their fantasy team
+   * just changed, so they are the strong candidate alongside the NFL teammate.
+   */
+  currentRosterTeammates?: readonly ActorRef[];
+  /**
+   * 1-based ordinal of the drafted player among his position in this draft,
+   * from `positionDraftIndex()`. Appearance gates need it; nothing else does.
+   */
+  positionDraftIndex?: number;
   /** Players who shared the drafted player's 2025 fantasy roster. */
   fantasyTeammates2025?: readonly ActorRef[];
   /** Players who shared a championship roster with the drafted player. */
@@ -229,6 +334,7 @@ export interface SelectActorsInput {
 const DEFAULT_RULES: ReactionRulesConfig = {
   draftedPlayerMustReact: true,
   includeRelevantCurrentTeammates: true,
+  includeCurrentRosterTeammates: true,
   minMessages: 2,
   targetMessages: 4,
   maxMessages: 6,
@@ -264,6 +370,18 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
   const taken = new Set<string>();
   const selected: SelectedActor[] = [];
 
+  // Every non-mandatory candidate carrying a gated Regular profile is checked
+  // against this subject. Ungated candidates never touch it.
+  const gateSubject: GateSubject = {
+    position: pick.position ?? null,
+    nflTeam: pick.nflTeam ?? null,
+    ...(input.positionDraftIndex !== undefined
+      ? { positionDraftIndex: input.positionDraftIndex }
+      : {}),
+  };
+  const admits = (star: StarPlayer | undefined): boolean =>
+    gateAllows(star?.appearance, gateSubject);
+
   // --- 1. mandatory: the drafted player, always, ranked first ---------------
   const drafted: SelectedActor = {
     playerId: pick.playerId,
@@ -288,6 +406,7 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
   // --- 2. strong: one relevant current NFL teammate -------------------------
   const teammatePool = (input.nflTeammates ?? [])
     .filter((mate) => !taken.has(normalizeName(mate.name)) && mate.playerId !== pick.playerId)
+    .filter((mate) => admits(findStar(input.regulars ?? [], mate.name)))
     .map((mate) => {
       const star = findStar(input.regulars ?? [], mate.name);
       const relevance = mergeRelevance(
@@ -333,10 +452,69 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
     }
   }
 
-  // --- 3. optional: Regulars, sampled by activity on EVERY pick -------------
+  // --- 3. strong: one player already on this Manager's roster this draft ----
+  // The pick landed on his own fantasy team, which is the liveliest angle in the
+  // room: it is about 2026, not about a past season. Same position means the
+  // starting spot is now contested, and `competesForStartingSpot` makes that the
+  // likeliest roster-mate to be offered.
+  const rosterPool = (input.currentRosterTeammates ?? [])
+    .filter((mate) => !taken.has(normalizeName(mate.name)) && mate.playerId !== pick.playerId)
+    .filter((mate) => admits(findStar(input.regulars ?? [], mate.name)))
+    .map((mate) => {
+      const star = findStar(input.regulars ?? [], mate.name);
+      const competes = samePosition(mate.position, pick.position);
+      const relevance = mergeRelevance(
+        {
+          sharedRosterThisDraft: true,
+          competesForStartingSpot: competes,
+          samePosition: competes,
+          isNflTeammate: isSameTeam(mate.nflTeam, pick.nflTeam),
+          isRequiredRegular: star?.required === true,
+          runningJokeStrength: jokeStrength(input.runningJokes, [mate.playerId, star?.key]),
+        },
+        lookupRelevance(input.relevance, [mate.playerId, star?.key]),
+      );
+      const activity = star
+        ? Math.max(star.activity, BASE_ROSTER_TEAMMATE_ACTIVITY)
+        : BASE_ROSTER_TEAMMATE_ACTIVITY;
+      const actor: SelectedActor = {
+        playerId: mate.playerId,
+        name: mate.name,
+        position: mate.position ?? null,
+        nflTeam: mate.nflTeam ?? null,
+        role: 'roster_teammate',
+        mandatory: false,
+        weight: actorWeight(activity, relevance),
+        reasons: unique([
+          `already on ${pick.managerName}'s roster in this draft`,
+          ...(star ? ['also a Lounge regular'] : []),
+          ...relevanceReasons(relevance).filter(
+            (reason) => !reason.startsWith('already on the drafting manager'),
+          ),
+        ]),
+      };
+      if (star) {
+        actor.starKey = star.key;
+        actor.star = star;
+      }
+      return { item: actor, weight: actor.weight };
+    });
+
+  if (rules.includeCurrentRosterTeammates !== false && rosterPool.length > 0) {
+    const [chosen] = weightedSample(rosterPool, 1, rng);
+    if (chosen) {
+      selected.push(chosen);
+      taken.add(identityKey(chosen));
+      taken.add(normalizeName(chosen.name));
+    }
+  }
+
+  // --- 4. optional: Regulars, sampled by activity on EVERY pick -------------
   // No relationship to the Pick is required or checked here. That is the point.
   const regularPool = (input.regulars ?? [])
     .filter((star) => !taken.has(normalizeName(star.name)))
+    // The gate is the only thing in this file allowed to keep a Regular out.
+    .filter((star) => admits(star))
     .map((star) => {
       const meta = input.starMeta?.[star.key];
       const nflTeam = meta?.nflTeam ?? null;
@@ -372,13 +550,14 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
   const regularSlots = Math.max(0, rules.maxRegularsPerReaction);
   const chosenRegulars = weightedSample(regularPool, regularSlots, rng);
 
-  // --- 4-7. optional: relationship candidates ------------------------------
+  // --- 5-8. optional: relationship candidates ------------------------------
   const otherPool: { item: SelectedActor; weight: number }[] = [];
   const pushOther = (ref: ActorRef, role: ActorRole, relevance: ActorRelevance, reason: string) => {
     if (taken.has(normalizeName(ref.name))) return;
     if (otherPool.some((entry) => normalizeName(entry.item.name) === normalizeName(ref.name))) return;
     const star = findStar(input.regulars ?? [], ref.name);
     if (star && chosenRegulars.some((r) => r.starKey === star.key)) return;
+    if (!admits(star)) return;
     const merged = mergeRelevance(
       {
         ...relevance,
@@ -406,6 +585,18 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
     otherPool.push({ item: actor, weight: actor.weight });
   };
 
+  // A second roster-mate is welcome, just not guaranteed a slot of his own.
+  for (const ref of input.currentRosterTeammates ?? []) {
+    pushOther(
+      ref,
+      'roster_teammate',
+      {
+        sharedRosterThisDraft: true,
+        competesForStartingSpot: samePosition(ref.position, pick.position),
+      },
+      `already on ${pick.managerName}'s roster in this draft`,
+    );
+  }
   for (const ref of input.fantasyTeammates2025 ?? []) {
     pushOther(ref, 'fantasy_2025_teammate', { sharedRoster2025: true }, 'shared a 2025 fantasy roster with the drafted player');
   }
@@ -436,11 +627,23 @@ export function selectActors(input: SelectActorsInput): SelectedActor[] {
   }
 
   // --- assemble -------------------------------------------------------------
-  const optional = [...chosenRegulars, ...weightedSample(otherPool, Math.max(0, targetCount), rng)];
+  // The two strong slots are filled before this point, so `targetCount` alone
+  // could leave no room at all for an optional candidate. The Lounge is never
+  // empty (CONTEXT.md), so capacity always leaves at least one seat, still
+  // inside `maxCandidates`.
+  const capacity = Math.min(maxCandidates, Math.max(targetCount, selected.length + 1));
+  const optional = [...chosenRegulars, ...weightedSample(otherPool, Math.max(0, capacity), rng)];
   optional.sort((a, b) => b.weight - a.weight);
 
-  for (const actor of optional) {
-    if (selected.length >= targetCount) break;
+  // The heaviest drawn Regular takes the reserved seat, ahead of the weight
+  // order — otherwise the roster-mates and relationship candidates, which now
+  // outweigh ambient `activity` by design, could crowd the Regulars out of a
+  // full room entirely.
+  const heaviestRegular = [...chosenRegulars].sort((a, b) => b.weight - a.weight)[0];
+  const fillOrder = heaviestRegular ? [heaviestRegular, ...optional] : optional;
+
+  for (const actor of fillOrder) {
+    if (selected.length >= capacity) break;
     const key = identityKey(actor);
     if (taken.has(key) || taken.has(normalizeName(actor.name))) continue;
     taken.add(key);

@@ -17,6 +17,7 @@
   "reactionRules": {
     "draftedPlayerMustReact": true,
     "includeRelevantCurrentTeammates": true,
+    "includeCurrentRosterTeammates": true,
     "minMessages": 2,
     "targetMessages": 4,
     "maxMessages": 6,
@@ -40,6 +41,6 @@
       "quality": 85,
       "compressionLevel": 6
     },
-    "watermark": "Players Lounge \u2022 Fantasy parody"
+    "watermark": "Players Lounge • Fantasy parody"
   }
 }

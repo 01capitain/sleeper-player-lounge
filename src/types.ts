@@ -53,6 +53,7 @@ export type ReactionReason =
   | 'nfl_teammate'
   | 'star_regular'
   | 'position_rival'
+  | 'roster_teammate'
   | 'fantasy_2025_history'
   | 'championship_history'
   | 'running_joke'
@@ -171,6 +172,33 @@ export type PerformanceOverrides = Record<string, PerformanceLabel>;
  * A Regular: a recurring cast member with a persistent personality profile.
  * `leagueLore` and `guardrails` are present on some entries only.
  */
+/**
+ * An Appearance Gate: the explicit condition a Regular must satisfy before he
+ * enters the sampling pool at all.
+ *
+ * Regulars are ambient by default (CONTEXT.md), so a gate is the deliberate
+ * exception, carried per Regular in `star-players.json`. It exists for a cast
+ * member whose single joke stops landing when he turns up everywhere: Kyle Pitts
+ * counting tight ends on a Round 12 kicker is noise, the same line on the third
+ * tight end off the board is the joke.
+ *
+ * Every listed condition is an OR. An empty or absent gate means no gate.
+ */
+export interface AppearanceGate {
+  /** Passes when the drafted player's NFL team is one of these, e.g. `["ATL"]`. */
+  nflTeams?: string[];
+  /**
+   * Passes when the drafted player plays `position` and is among the first
+   * `withinFirst` players at that position taken in this draft.
+   */
+  earlyAtPosition?: {
+    position: string;
+    withinFirst: number;
+  };
+  /** Why the gate exists. Documentation only; never reaches the prompt. */
+  note?: string;
+}
+
 export interface StarPlayer {
   /** Stable snake_case handle, e.g. `kyle_pitts`. Not a Sleeper player id. */
   key: string;
@@ -184,6 +212,11 @@ export interface StarPlayer {
   hooks: string[];
   /** League-specific running lore, e.g. Kyle Pitts' bust reputation. */
   leagueLore?: string[];
+  /**
+   * When set, this Regular is NOT ambient: he only enters the pool on Picks the
+   * gate admits. Being the drafted player always bypasses it.
+   */
+  appearance?: AppearanceGate;
   guardrails?: string[];
 }
 
@@ -270,6 +303,11 @@ export interface HistoryRulesConfig {
 export interface ReactionRulesConfig {
   draftedPlayerMustReact: boolean;
   includeRelevantCurrentTeammates: boolean;
+  /**
+   * Offer one player the drafting Manager already picked in THIS draft on every
+   * Pick that has one. Default true.
+   */
+  includeCurrentRosterTeammates?: boolean;
   minMessages: number;
   targetMessages: number;
   maxMessages: number;

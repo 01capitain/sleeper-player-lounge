@@ -130,6 +130,12 @@ export interface SharedRosterLink {
 export interface LoungeContextExtras {
   /** Every candidate Speaker in §9 order, with the reason each is eligible. */
   actors: SelectedActor[];
+  /**
+   * The Manager's roster so far with position and NFL team resolved, so the
+   * prompt can show who the new pick actually competes with. Same players and
+   * same order as `manager.roster`, which stays a plain name list.
+   */
+  managerRosterDetail: ActorRef[];
   /** The draft signals plus their supporting detail (counts, stack partners). */
   signalDetail: DraftSignalDetail;
   /** Shared 2025 rosters and championship rosters among candidate Speakers. */
@@ -191,7 +197,12 @@ export async function buildContext(
     deps.recentMessages ?? (await readJsonlTail<LoungeMessage>(loungeMessagesFile, MAX_RECENT_MESSAGES))
   ).slice(-MAX_RECENT_MESSAGES);
 
-  const priorPicks = deps.priorPicks ?? (await loadPriorPicks(pick));
+  // Filtered rather than trusted: a caller handing over the whole draft must not
+  // be able to leak a future Pick into the roster or the signals, which is how a
+  // Message ends up referring to something that has not happened yet.
+  const priorPicks = (deps.priorPicks ?? (await loadPriorPicks(pick))).filter(
+    (prior) => prior.draftId === pick.draftId && prior.pickNo < pick.pickNo,
+  );
   const history = deps.history === undefined ? await loadHistoryModule() : deps.history;
   const playersModule = await loadPlayersModule(deps);
   const teammatesOf = playersModule.teammatesOf;
@@ -209,6 +220,11 @@ export async function buildContext(
           .map((prior) => prior.playerName)),
     ],
   };
+
+  // --- who the Manager already owns in THIS draft ---------------------------
+  // Their own fantasy team just changed, so they are candidate Speakers rather
+  // than only a list of names in the prompt.
+  const managerRosterDetail = currentRosterRefs(pick, priorPicks, players, manager.roster);
 
   // --- current NFL teammates of the drafted player --------------------------
   const nflTeammates = resolveNflTeammates(pick, players, teammatesOf);
@@ -242,6 +258,11 @@ export async function buildContext(
     datasetPositionRivals(pick, players, positionRivalsOf),
   );
 
+  // --- draft signals ---------------------------------------------------------
+  // Computed before actor selection: `positionDraftIndex` is what an Appearance
+  // Gate such as "only the first few tight ends" is measured against.
+  const signalDetail = computeDraftSignalDetail(pick, priorPicks, players, deps.signalOptions);
+
   // --- who is eligible to speak ---------------------------------------------
   const actors = selectActors({
     pick,
@@ -249,12 +270,16 @@ export async function buildContext(
     regulars: starPlayers,
     starMeta,
     nflTeammates,
+    currentRosterTeammates: managerRosterDetail,
     fantasyTeammates2025,
     championshipTeammates,
     positionRivals,
     runningJokes,
     relevance,
     rules,
+    ...(signalDetail.positionDraftIndex !== undefined
+      ? { positionDraftIndex: signalDetail.positionDraftIndex }
+      : {}),
   });
 
   // --- Fantasy Memory for every candidate Speaker ---------------------------
@@ -269,8 +294,6 @@ export async function buildContext(
 
   const sharedRosters = computeSharedRosters(actors, speakerHistories);
 
-  // --- draft signals ---------------------------------------------------------
-  const signalDetail = computeDraftSignalDetail(pick, priorPicks, players, deps.signalOptions);
   const draftSignals: DraftSignals = {};
   if (signalDetail.positionRun !== undefined) draftSignals.positionRun = signalDetail.positionRun;
   if (signalDetail.isStack !== undefined) draftSignals.isStack = signalDetail.isStack;
@@ -301,10 +324,11 @@ export async function buildContext(
     draftedPlayerHistory: draftedPlayerHistory ?? null,
     speakerHistories,
     recentMessages: [...recentMessages],
-    runningJokes: relevantJokes(runningJokes, actors),
+    runningJokes: relevantJokes(runningJokes, actors, starPlayers),
     draftSignals,
     simulated: pick.simulated === true,
     actors,
+    managerRosterDetail,
     signalDetail,
     sharedRosters,
     seed: typeof deps.seed === 'number' ? deps.seed : hashOf(deps.seed ?? pick.eventId),
@@ -679,6 +703,42 @@ function mergeRefs(...lists: ActorRef[][]): ActorRef[] {
   return out;
 }
 
+/**
+ * Resolve the Manager's roster so far into candidate Speakers.
+ *
+ * Prior Picks already carry name, position and NFL team, so this needs no
+ * Sleeper lookup; `players` only fills a gap. `rosterNames` is the authority on
+ * order and membership, so an injected `managerRoster` (tests, replays) behaves
+ * exactly like one derived from the Picks.
+ */
+function currentRosterRefs(
+  pick: Pick,
+  priorPicks: readonly Pick[],
+  players: Record<string, SleeperPlayer>,
+  rosterNames: readonly string[],
+): ActorRef[] {
+  const wanted = rosterNames.map((name) => normalizeName(name));
+  if (wanted.length === 0) return [];
+  const byName = new Map<string, ActorRef>();
+  for (const prior of priorPicks) {
+    if (prior.managerId !== pick.managerId) continue;
+    if (prior.playerId === pick.playerId) continue;
+    const entry = players[prior.playerId];
+    byName.set(normalizeName(prior.playerName), {
+      playerId: prior.playerId,
+      name: prior.playerName,
+      position: prior.position ?? entry?.position ?? null,
+      nflTeam: prior.nflTeam ?? entry?.team ?? null,
+    });
+  }
+  const out: ActorRef[] = [];
+  for (const key of wanted) {
+    const ref = byName.get(key);
+    if (ref) out.push(ref);
+  }
+  return out;
+}
+
 function historyRefs(
   playerIds: readonly string[],
   players: Record<string, SleeperPlayer>,
@@ -701,16 +761,38 @@ function historyRefs(
   return out;
 }
 
-/** Only jokes with a live participant in the room, plus every persistent joke. */
-function relevantJokes(jokes: readonly RunningJoke[], actors: readonly SelectedActor[]): RunningJoke[] {
+/**
+ * Only jokes with a live participant in the room, plus persistent jokes.
+ *
+ * The one exception is a persistent joke that belongs to a gated Regular: when
+ * the gate kept him out, his lore stays out with him. Leaving it in the Context
+ * hands the joke to whoever else is in the room, which is the same over-exposure
+ * the gate exists to stop — Justin Jefferson counting tight ends on Kyle Pitts'
+ * behalf is still a Kyle Pitts joke.
+ */
+function relevantJokes(
+  jokes: readonly RunningJoke[],
+  actors: readonly SelectedActor[],
+  starPlayers: readonly StarPlayer[] = [],
+): RunningJoke[] {
   const present = new Set<string>();
   for (const actor of actors) {
     present.add(actor.playerId);
     if (actor.starKey) present.add(actor.starKey);
   }
-  return jokes.filter(
-    (joke) => joke.persistent === true || joke.participants.some((p) => present.has(p)),
+  const gatedKeys = new Set(
+    starPlayers.filter((star) => star.appearance !== undefined).map((star) => star.key),
   );
+  return jokes.filter((joke) => {
+    if (joke.participants.some((participant) => present.has(participant))) return true;
+    if (joke.persistent !== true) return false;
+    // Persistent, but nobody is here to carry it: drop it if every participant
+    // is a gated Regular the gate excluded from this Pick.
+    const gatedOut =
+      joke.participants.length > 0 &&
+      joke.participants.every((participant) => gatedKeys.has(participant));
+    return !gatedOut;
+  });
 }
 
 /** 2025 and championship roster ties between the candidate Speakers themselves. */

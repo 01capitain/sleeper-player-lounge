@@ -37,19 +37,27 @@ The compact, deliberately bounded bundle of facts assembled for one Pick and han
 _Avoid_: prompt, payload, input
 
 **Regular**:
-A recurring cast member of the Lounge with a persistent personality profile. Regulars are ambient: they are in the Lounge for every Pick and may comment on Picks that have nothing to do with them. Being drafted is not a precondition for speaking, and Regulars are not more likely to speak because they were drafted.
+A recurring cast member of the Lounge with a persistent personality profile. Regulars are ambient: they are in the Lounge for every Pick and may comment on Picks that have nothing to do with them. Being drafted is not a precondition for speaking, and Regulars are not more likely to speak because they were drafted. A Regular carrying an Appearance Gate is the one exception.
 _Avoid_: star, celebrity, character
 
 **Activity**:
 A Regular's baseline propensity to speak on any given Pick, independent of relevance. Drives how often they appear across a draft, not whether a specific Pick concerns them.
 _Avoid_: frequency, weight, chattiness
 
+**Appearance Gate**:
+An explicit per-Regular condition that must hold before that Regular enters the sampling pool. The single, deliberate exception to the ambient rule, for a Regular whose one joke stops landing when he turns up everywhere. Being the drafted player always bypasses it, and a gated Regular's League Lore leaves the Context with him.
+_Avoid_: filter, relevance check, whitelist
+
+**Roster Teammate**:
+A player the drafting Manager already selected in the current draft. The new Pick lands on his fantasy team, so he either welcomes the upgrade or sees his starting spot contested. Distinct from an NFL teammate and from a 2025 fantasy teammate.
+_Avoid_: teammate, roster-mate, squad member
+
 **Fantasy Memory**:
 The intentionally narrow set of historical facts a Speaker may reference: full 2025 roster history, plus championship-roster membership from any season. Nothing else.
 _Avoid_: history, memory, past
 
 **Championship Membership**:
-Being on a season's winning fantasy roster. The only pre-2025 fact that survives into Fantasy Memory.
+Being on a season's winning fantasy roster. The only pre-2025 fact that survives into Fantasy Memory, and deliberately the weakest: it barely raises a Speaker's odds, and a Reaction carries at most one championship line, never as its opening Message.
 _Avoid_: title, ring, win
 
 **Season Literal**:

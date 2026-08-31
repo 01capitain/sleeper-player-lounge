@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BASE_NON_REGULAR_ACTIVITY,
+  BASE_ROSTER_TEAMMATE_ACTIVITY,
   RELEVANCE_BONUS,
   actorWeight,
   createRng,
+  gateAllows,
   hashSeed,
   selectActors,
   weightedSample,
@@ -14,6 +16,7 @@ import { makePick, starMetaFixture, unconnectedRegulars } from './fixtures.js';
 const rules = {
   draftedPlayerMustReact: true,
   includeRelevantCurrentTeammates: true,
+  includeCurrentRosterTeammates: true,
   minMessages: 2,
   targetMessages: 4,
   maxMessages: 6,
@@ -207,5 +210,130 @@ describe('candidate ordering and limits', () => {
     const pitts = actors.find((actor) => actor.starKey === 'kyle_pitts');
     expect(pitts).toBeDefined();
     expect(pitts?.reasons.join(' ')).toContain('2025');
+  });
+});
+
+describe('an Appearance Gate is the one thing that keeps a Regular out', () => {
+  /** The fixture cast, with Kyle Pitts gated to Atlanta and the early tight ends. */
+  const gatedRegulars = unconnectedRegulars.map((star) =>
+    star.key === 'kyle_pitts'
+      ? {
+          ...star,
+          appearance: {
+            nflTeams: ['ATL'],
+            earlyAtPosition: { position: 'TE', withinFirst: 4 },
+          },
+        }
+      : star,
+  );
+
+  function inputFor(overrides: Parameters<typeof makePick>[0], positionDraftIndex?: number) {
+    return {
+      ...unconnectedInput(overrides),
+      regulars: gatedRegulars,
+      ...(positionDraftIndex !== undefined ? { positionDraftIndex } : {}),
+    };
+  }
+
+  it('admits on any listed condition and fails closed when the data is missing', () => {
+    const gate = { nflTeams: ['ATL'], earlyAtPosition: { position: 'TE', withinFirst: 4 } };
+    expect(gateAllows(gate, { nflTeam: 'atl', position: 'RB' })).toBe(true);
+    expect(gateAllows(gate, { nflTeam: 'DET', position: 'te', positionDraftIndex: 4 })).toBe(true);
+    expect(gateAllows(gate, { nflTeam: 'DET', position: 'TE', positionDraftIndex: 5 })).toBe(false);
+    expect(gateAllows(gate, { nflTeam: 'DET', position: 'TE' })).toBe(false);
+    expect(gateAllows(gate, {})).toBe(false);
+    expect(gateAllows(undefined, {})).toBe(true);
+  });
+
+  it('keeps the gated Regular out of the pool on a pick his gate rejects', () => {
+    for (let seed = 0; seed < 200; seed += 1) {
+      const actors = selectActors({ ...inputFor({}, 12), seed });
+      expect(actors.some((actor) => actor.starKey === 'kyle_pitts'), `seed ${seed}`).toBe(false);
+    }
+  });
+
+  it('admits him on his own NFL team and on an early tight end', () => {
+    const reachable = (input: ReturnType<typeof inputFor>): boolean => {
+      for (let seed = 0; seed < 200; seed += 1) {
+        const actors = selectActors({ ...input, seed });
+        if (actors.some((actor) => actor.starKey === 'kyle_pitts')) return true;
+      }
+      return false;
+    };
+    expect(reachable(inputFor({ nflTeam: 'ATL', position: 'RB' }, 9))).toBe(true);
+    expect(reachable(inputFor({ nflTeam: 'DET', position: 'TE' }, 3))).toBe(true);
+  });
+
+  it('leaves the ungated Regulars entirely ambient', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 200; seed += 1) {
+      for (const actor of selectActors({ ...inputFor({}, 12), seed })) {
+        if (actor.starKey) seen.add(actor.starKey);
+      }
+    }
+    expect([...seen].sort()).toEqual(['aaron_rodgers', 'travis_kelce']);
+  });
+});
+
+describe("the drafting Manager's own roster", () => {
+  const roster = [
+    { playerId: '5001', name: 'Justin Tucker', position: 'K', nflTeam: 'BAL' },
+    { playerId: '5002', name: 'Tyreek Hill', position: 'WR', nflTeam: 'MIA' },
+  ];
+
+  it('offers one player already on the roster, and says why he is there', () => {
+    const actors = selectActors({ ...unconnectedInput(), currentRosterTeammates: roster });
+    const mate = actors.find((actor) => actor.role === 'roster_teammate');
+    expect(mate).toBeDefined();
+    expect(roster.map((entry) => entry.name)).toContain(mate?.name);
+    expect(mate?.reasons.some((reason) => reason.includes("Max's roster in this draft"))).toBe(true);
+  });
+
+  it('prefers the roster-mate whose starting spot the pick threatens', () => {
+    // The fixture Pick is a kicker, so Justin Tucker is the contested one. The
+    // weight ordering is the promise; the draw only has to follow it on balance.
+    expect(
+      actorWeight(BASE_ROSTER_TEAMMATE_ACTIVITY, {
+        sharedRosterThisDraft: true,
+        competesForStartingSpot: true,
+        samePosition: true,
+      }),
+    ).toBeGreaterThan(
+      actorWeight(BASE_ROSTER_TEAMMATE_ACTIVITY, { sharedRosterThisDraft: true }),
+    );
+
+    const counts = { contested: 0, other: 0 };
+    for (let seed = 0; seed < 400; seed += 1) {
+      const actors = selectActors({
+        ...unconnectedInput(),
+        currentRosterTeammates: roster,
+        seed,
+      });
+      const mate = actors.find((actor) => actor.role === 'roster_teammate');
+      if (mate?.name === 'Justin Tucker') counts.contested += 1;
+      else if (mate?.name === 'Tyreek Hill') counts.other += 1;
+    }
+    expect(counts.contested).toBeGreaterThan(counts.other);
+  });
+
+  it('outweighs every ambient Regular, so the pick never lands unremarked', () => {
+    const loudest = Math.max(...unconnectedRegulars.map((star) => star.activity));
+    expect(
+      actorWeight(BASE_ROSTER_TEAMMATE_ACTIVITY, { sharedRosterThisDraft: true }),
+    ).toBeGreaterThan(loudest);
+  });
+
+  it('still leaves a seat for a Regular in a full room', () => {
+    for (let seed = 0; seed < 100; seed += 1) {
+      const actors = selectActors({
+        ...unconnectedInput(),
+        currentRosterTeammates: roster,
+        nflTeammates: [
+          { playerId: '5003', name: 'Joey Bosa', position: 'DE', nflTeam: 'LAC' },
+        ],
+        seed,
+      });
+      expect(actors.some((actor) => actor.role === 'regular'), `seed ${seed}`).toBe(true);
+    }
   });
 });

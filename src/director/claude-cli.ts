@@ -608,7 +608,21 @@ export function renderUserPrompt(context: LoungeContext): string {
   if (roster.length === 0) {
     lines.push(`Nobody yet — ${pick.playerName} is ${pick.managerName}'s first pick of this draft.`);
   } else {
-    roster.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
+    // Positions matter here: they are how a roster-mate can see whether the new
+    // pick strengthens his fantasy team or takes his starting spot.
+    const detail = new Map(
+      (extras.managerRosterDetail ?? []).map((ref) => [ref.name, ref] as const),
+    );
+    const inRoom = new Set((extras.actors ?? []).map((actor) => actor.name));
+    roster.forEach((name, index) => {
+      const ref = detail.get(name);
+      const marker = inRoom.has(name) ? ' — in the Lounge for this pick' : '';
+      lines.push(`${index + 1}. ${name}${describePlayer(ref?.position, ref?.nflTeam)}${marker}`);
+    });
+    lines.push('');
+    lines.push(
+      `${pick.playerName} joins that roster. Anyone already on it has a stake in this pick: it either strengthens the team he plays for or lines up against him for a starting spot.`,
+    );
   }
   lines.push('');
 
@@ -640,12 +654,24 @@ export function renderUserPrompt(context: LoungeContext): string {
     lines.push(
       'Any message built on one of these facts must state the season as a four-digit year.',
     );
+    lines.push(
+      'Championship rosters are the oldest and flattest fact in this list. Reach for a 2025 fact or for this draft before you reach for a ring, use at most one championship line in the whole reaction, and never open with one.',
+    );
   }
   lines.push('');
 
   // --- draft signals --------------------------------------------------------
   lines.push('## What is happening in the draft');
   lines.push('');
+  // A plain fact, not a signal: where he sits in the queue at his own position.
+  // Kept out of `renderSignals` so an ordinary pick still reads as ordinary.
+  const positionIndex = extras.signalDetail?.positionDraftIndex;
+  if (positionIndex !== undefined && pick.position) {
+    lines.push(
+      `He is the ${ordinal(positionIndex)} ${pick.position} taken in this draft.`,
+    );
+    lines.push('');
+  }
   const signals = renderSignals(context);
   if (signals.length === 0) {
     lines.push(
@@ -743,7 +769,7 @@ function renderRoom(context: LoungeContext): string[] {
         actor.nflTeam,
         actor.mandatory
           ? 'THE DRAFTED PLAYER. He must send at least one message.'
-          : headlineForRole(actor.role, context.pick.playerName),
+          : headlineForRole(actor.role, context.pick.playerName, context.pick.managerName),
         actor.star,
         // The mandatory reason is already the headline; keep the rest.
         actor.mandatory
@@ -794,10 +820,12 @@ function reasonKey(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim();
 }
 
-function headlineForRole(role: string, draftedName: string): string {
+function headlineForRole(role: string, draftedName: string, managerName: string): string {
   switch (role) {
     case 'nfl_teammate':
       return `Current NFL teammate of ${draftedName}.`;
+    case 'roster_teammate':
+      return `Already on ${managerName}'s roster in this draft — ${draftedName} just joined his fantasy team.`;
     case 'regular':
       return 'Lounge regular. He is here for every pick, whether or not this one concerns him.';
     case 'fantasy_2025_teammate':

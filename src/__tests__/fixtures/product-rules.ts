@@ -161,6 +161,16 @@ export const RODGERS_PLAYER_ID = '96';
  * relationship, he has no Fantasy Memory and he is in no running joke.
  */
 export const UNCONNECTED_PICK_PLAYER_ID = '8259';
+/**
+ * Bijan Robinson, RB, ATL, pick 2 — an Atlanta pick, which is one half of Kyle
+ * Pitts' Appearance Gate. He is not Pitts, so the gate, not the mandatory
+ * drafted-player slot, is what admits Pitts here.
+ */
+export const ATL_PICK_PLAYER_ID = '9509';
+/** Sam LaPorta, TE, DET, pick 64 — the 4th tight end off the board: still early. */
+export const EARLY_TE_PICK_PLAYER_ID = '10859';
+/** Tyler Warren, TE, IND, pick 68 — the 5th tight end: one past the gate. */
+export const LATE_TE_PICK_PLAYER_ID = '12518';
 
 // ---------------------------------------------------------------------------
 // The Season Literal scanner (CONTEXT.md: Season Literal)

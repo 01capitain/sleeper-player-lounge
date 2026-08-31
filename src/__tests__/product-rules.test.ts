@@ -26,6 +26,9 @@
  *   11 Regulars are ambient — relevance raises odds, it never gates
  *   12 the Director always runs behind the ADR 0001 isolation guard
  *   13 ADP sentinels never leak, and `search_rank` is never an ADP fallback
+ *   14 an Appearance Gate is the only thing that keeps a Regular out, and it
+ *      takes his lore out of the room with him
+ *   15 the Manager's own roster reacts to what he just drafted
  *
  * House rules for this suite:
  *   - the real `claude` binary is NEVER spawned; every Director test either uses
@@ -51,7 +54,12 @@ import {
   type BuildContextDeps,
   type BuiltContext,
 } from '../context/builder.js';
-import { actorWeight, selectActors, type SelectedActor } from '../context/actors.js';
+import {
+  actorWeight,
+  gateAllows,
+  selectActors,
+  type SelectedActor,
+} from '../context/actors.js';
 import { computeDraftSignals } from '../context/signals.js';
 import {
   allowedSpeakers,
@@ -94,8 +102,11 @@ import {
   testConfig,
 } from '../import/__tests__/fixtures.js';
 import {
+  ATL_PICK_PLAYER_ID,
   directorEnvelope,
+  EARLY_TE_PICK_PLAYER_ID,
   KELCE_PLAYER_ID,
+  LATE_TE_PICK_PLAYER_ID,
   PITTS_PLAYER_ID,
   preCutoffSeasonLines,
   pickOf,
@@ -735,11 +746,10 @@ describe("Rule 6 — Kyle Pitts always carries the league's bust lore", () => {
     expect(sightings).toBeGreaterThan(1);
   });
 
-  it('the persistent bust joke stays alive in the Lounge even on picks that ignore him', async () => {
-    const pick = pickOf(UNCONNECTED_PICK_PLAYER_ID);
-    const context = await contextFor(pick);
+  it('the persistent bust joke stays alive in the Lounge on every pick his gate admits', async () => {
+    const context = await contextFor(pickOf(ATL_PICK_PLAYER_ID));
     const joke = context.runningJokes.find((entry) => entry.id === 'kyle-pitts-draft-bust');
-    expect(joke, 'the persistent League Lore joke must never decay out of the Context').toBeDefined();
+    expect(joke, 'the persistent League Lore joke must never decay while he is admitted').toBeDefined();
     expect(joke?.persistent).toBe(true);
   });
 });
@@ -1054,7 +1064,7 @@ describe('Rule 11 — Regulars are ambient: relevance raises their odds, it neve
     expect(actorWeight(puka.activity, {})).toBeGreaterThan(0);
   });
 
-  it('every one of the 15 Regulars is reachable on a pick that concerns none of them', async () => {
+  it('every ungated Regular is reachable on a pick that concerns none of them', async () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 400; seed += 1) {
       const actors = selectActors({
@@ -1068,10 +1078,15 @@ describe('Rule 11 — Regulars are ambient: relevance raises their odds, it neve
       });
       for (const actor of actors) if (actor.starKey) seen.add(actor.starKey);
     }
+    // A Regular carrying an Appearance Gate is the stated exception (Rule 14);
+    // every other Regular must still turn up on a pick about nobody.
     const missing = realRegulars
+      .filter((star) => star.appearance === undefined)
       .map((star) => star.key)
       .filter((key) => !seen.has(key));
-    expect(missing, `these Regulars were never selectable: ${missing.join(', ')}`).toEqual([]);
+    expect(missing, `these ungated Regulars were never selectable: ${missing.join(', ')}`).toEqual(
+      [],
+    );
   });
 
   it('the Lounge is never empty: some Regular is in the room for every pick of the real draft', async () => {
@@ -1282,5 +1297,209 @@ describe('Rule 13 — ADP sentinels never leak and search_rank is never an ADP f
       expect(signals.reachedAboveRank, `pick ${pick.pickNo} ${pick.playerName}`).toBeUndefined();
     }
     expect(silent).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// Rule 14 — Appearance Gates
+// ===========================================================================
+
+describe('Rule 14 — an Appearance Gate is the only thing that keeps a Regular out', () => {
+  const pitts = regular('kyle_pitts');
+  const gate = pitts.appearance;
+
+  /** Is this Regular reachable on this Pick at all, over many seeds? */
+  async function reachableOn(pick: Pick, starKey: string, seeds = 200): Promise<boolean> {
+    for (let seed = 0; seed < seeds; seed += 1) {
+      const context = await contextFor(pick, { seed });
+      if (context.actors.some((actor) => actor.starKey === starKey)) return true;
+    }
+    return false;
+  }
+
+  it('Kyle Pitts is the only gated Regular, and his gate is Atlanta plus the early tight ends', () => {
+    const gated = realRegulars.filter((star) => star.appearance !== undefined).map((s) => s.key);
+    expect(gated).toEqual(['kyle_pitts']);
+    expect(gate?.nflTeams).toEqual(['ATL']);
+    expect(gate?.earlyAtPosition).toEqual({ position: 'TE', withinFirst: 4 });
+  });
+
+  it('the gate admits Atlanta picks and the first four tight ends, and nothing else', () => {
+    expect(gateAllows(gate, { nflTeam: 'ATL', position: 'RB', positionDraftIndex: 30 })).toBe(true);
+    expect(gateAllows(gate, { nflTeam: 'DET', position: 'TE', positionDraftIndex: 4 })).toBe(true);
+    expect(gateAllows(gate, { nflTeam: 'IND', position: 'TE', positionDraftIndex: 5 })).toBe(false);
+    expect(gateAllows(gate, { nflTeam: 'LAC', position: 'K', positionDraftIndex: 3 })).toBe(false);
+    // A gate with no ordinal to measure fails closed rather than guessing.
+    expect(gateAllows(gate, { nflTeam: 'DET', position: 'TE' })).toBe(false);
+    // No gate is no gate: an ungated Regular is admitted everywhere.
+    expect(gateAllows(undefined, { nflTeam: 'LAC', position: 'K' })).toBe(true);
+  });
+
+  it('he is reachable on an Atlanta pick and on the fourth tight end off the board', async () => {
+    expect(await reachableOn(pickOf(ATL_PICK_PLAYER_ID), 'kyle_pitts')).toBe(true);
+    expect(await reachableOn(pickOf(EARLY_TE_PICK_PLAYER_ID), 'kyle_pitts')).toBe(true);
+  });
+
+  it('he is never in the room on the fifth tight end or on a pick about nobody', async () => {
+    for (const playerId of [LATE_TE_PICK_PLAYER_ID, UNCONNECTED_PICK_PLAYER_ID]) {
+      const pick = pickOf(playerId);
+      for (let seed = 0; seed < 200; seed += 1) {
+        const context = await contextFor(pick, { seed });
+        const present = context.actors.some((actor) => actor.starKey === 'kyle_pitts');
+        expect(present, `pick ${pick.pickNo} ${pick.playerName}, seed ${seed}`).toBe(false);
+      }
+    }
+  });
+
+  it('his lore leaves the room with him — nobody else carries the joke by proxy', async () => {
+    const context = await contextFor(pickOf(LATE_TE_PICK_PLAYER_ID));
+    expect(context.runningJokes.some((joke) => joke.id === 'kyle-pitts-draft-bust')).toBe(false);
+    const prompt = renderUserPrompt(context);
+    expect(prompt).not.toContain('Kyle Pitts');
+    for (const lore of pitts.leagueLore ?? []) expect(prompt).not.toContain(lore);
+  });
+
+  it('being drafted bypasses the gate: he always speaks on his own pick', async () => {
+    const pick = pickOf(PITTS_PLAYER_ID);
+    for (let seed = 0; seed < 40; seed += 1) {
+      const context = await contextFor(pick, { seed });
+      const drafted = context.actors[0];
+      expect(drafted?.starKey, `seed ${seed}`).toBe('kyle_pitts');
+      expect(drafted?.mandatory, `seed ${seed}`).toBe(true);
+    }
+  });
+
+  it('the gate cuts his exposure across the real draft without silencing him', async () => {
+    let sightings = 0;
+    for (const pick of realPicks) {
+      const context = await contextFor(pick);
+      if (context.actors.some((actor) => actor.starKey === 'kyle_pitts')) sightings += 1;
+    }
+    expect(sightings).toBeGreaterThan(0);
+    // Ungated he was drawn on roughly half the board; the gate is worth having
+    // only if it is a hard ceiling, so hold it under a tenth of the draft.
+    expect(sightings).toBeLessThan(realPicks.length / 10);
+  });
+
+  it('the Director is told nobody speaks for a gated Regular who is absent', () => {
+    expect(systemPrompt).toMatch(/only in the room when the pick is an Atlanta player/i);
+    expect(systemPrompt).toMatch(/nobody speaks for him/i);
+  });
+});
+
+// ===========================================================================
+// Rule 15 — the Manager's own roster reacts
+// ===========================================================================
+
+describe("Rule 15 — the Manager's own roster reacts to what he just drafted", () => {
+  /** Picks with a roster behind them, spread across the whole board. */
+  const withRoster = spreadOfPicks(40).filter((pick) => priorPicksOf(pick).some(
+    (prior) => prior.managerId === pick.managerId,
+  ));
+
+  it('the sample really does cover picks that land on an existing roster', () => {
+    expect(withRoster.length).toBeGreaterThan(20);
+  });
+
+  it('somebody already on the roster is offered on every pick that has one', async () => {
+    for (const pick of withRoster) {
+      const context = await contextFor(pick);
+      const rosterNames = new Set(context.manager.roster);
+      const mate = context.actors.find((actor) => actor.role === 'roster_teammate');
+      expect(
+        mate,
+        `pick ${pick.pickNo} ${pick.playerName} offered nobody from ${pick.managerName}'s roster`,
+      ).toBeDefined();
+      expect(rosterNames.has(mate?.name ?? '')).toBe(true);
+    }
+  });
+
+  it('a roster-mate outweighs the chattiest ambient Regular', () => {
+    const loudest = Math.max(...realRegulars.map((star) => star.activity));
+    expect(actorWeight(0.6, { sharedRosterThisDraft: true })).toBeGreaterThan(loudest);
+    // Same position on the same roster is the sharpest version of the angle.
+    expect(
+      actorWeight(0.6, { sharedRosterThisDraft: true, competesForStartingSpot: true }),
+    ).toBeGreaterThan(actorWeight(0.6, { sharedRosterThisDraft: true }));
+  });
+
+  it('the prompt names the stake: the roster he joins, with positions', async () => {
+    const pick = withRoster[0];
+    expect(pick).toBeDefined();
+    const context = await contextFor(pick as Pick);
+    const prompt = renderUserPrompt(context);
+    expect(prompt).toContain(`${(pick as Pick).managerName}'s roster so far`);
+    expect(prompt).toMatch(/joins that roster/);
+    expect(prompt).toMatch(/lines up against him for a starting spot/);
+    expect(prompt).toMatch(/in this draft — .* just joined his fantasy team/);
+  });
+
+  it('the roster listing carries each player\'s position, not just his name', async () => {
+    const context = await contextFor(withRoster[0] as Pick);
+    expect(context.managerRosterDetail.length).toBe(context.manager.roster.length);
+    for (const ref of context.managerRosterDetail) {
+      expect(ref.position, `${ref.name} has no position`).toBeTruthy();
+    }
+  });
+
+  it('the Director is told what the angle is, and how to label it', () => {
+    expect(systemPrompt).toMatch(/already on this manager's roster in this draft/i);
+    expect(systemPrompt).toMatch(/starting spot/i);
+    expect(systemPrompt).toMatch(/roster_teammate/);
+    const enumValues = (
+      JSON.parse(readFileSync(reactionSchemaFile, 'utf8')) as {
+        properties: {
+          reactions: { items: { properties: { reason: { enum: string[] } } } };
+        };
+      }
+    ).properties.reactions.items.properties.reason.enum;
+    expect(enumValues).toContain('roster_teammate');
+  });
+});
+
+// ===========================================================================
+// Championship restraint — a ring is background, not material
+// ===========================================================================
+
+describe('Championship history is background: it barely moves the odds', () => {
+  it('a shared ring is the weakest relationship bonus in the formula', async () => {
+    const { RELEVANCE_BONUS } = await import('../context/actors.js');
+    expect(RELEVANCE_BONUS.sharedChampionship).toBeLessThan(RELEVANCE_BONUS.sharedRoster2025);
+    expect(RELEVANCE_BONUS.sharedChampionship).toBeLessThan(RELEVANCE_BONUS.nflTeammate);
+    expect(RELEVANCE_BONUS.sharedChampionship).toBeLessThan(
+      RELEVANCE_BONUS.sharedRosterThisDraft,
+    );
+  });
+
+  it('the Director is told to ration championship lines', () => {
+    expect(systemPrompt).toMatch(/at most ONE championship line in a reaction/);
+    expect(systemPrompt).toMatch(/never the opening message/);
+  });
+
+  it('the prompt repeats the restraint wherever championship facts are listed', async () => {
+    const pick = pickOf(RODGERS_PLAYER_ID);
+    const prompt = renderUserPrompt(
+      await contextFor(pick, {
+        history: {
+          historyFor: (playerId: string) =>
+            playerId === pick.playerId
+              ? {
+                  playerId,
+                  lastSeason: null,
+                  championships: [
+                    {
+                      season: 2023,
+                      managerId: 'mgr-max',
+                      managerName: 'Max',
+                      sharedChampionPlayerIds: [],
+                    },
+                  ],
+                }
+              : null,
+        },
+      }),
+    );
+    expect(prompt).toMatch(/2023: on Max's championship roster/);
+    expect(prompt).toMatch(/use at most one championship line in the whole reaction/);
   });
 });

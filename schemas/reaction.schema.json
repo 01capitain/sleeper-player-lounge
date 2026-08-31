@@ -30,7 +30,7 @@
           "text": {"type": "string", "maxLength": 280},
           "delayMs": {"type": "integer", "minimum": 0, "maximum": 7000},
           "reason": {
-            "enum": ["drafted_player", "nfl_teammate", "star_regular", "position_rival", "fantasy_2025_history", "championship_history", "running_joke", "stack", "reach", "fall", "other"]
+            "enum": ["drafted_player", "nfl_teammate", "star_regular", "position_rival", "roster_teammate", "fantasy_2025_history", "championship_history", "running_joke", "stack", "reach", "fall", "other"]
           },
           "historyRefs": {
             "type": "array",
