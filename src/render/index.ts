@@ -123,6 +123,14 @@ export { renderPng } from './png.js';
 export type { RenderPngOptions } from './png.js';
 
 export {
+  writeWebpBeside,
+  webpPathFor,
+  WEBP_QUALITY,
+  WEBP_COMPRESSION_LEVEL,
+} from './webp.js';
+export type { WriteWebpOptions } from './webp.js';
+
+export {
   renderVideo,
   buildTimeline,
   frameCountFor,

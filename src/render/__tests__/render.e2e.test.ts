@@ -19,6 +19,7 @@ import { render } from '../index.js';
 import { preparePayload } from '../payload.js';
 import { renderPng } from '../png.js';
 import { hasFfmpeg, renderVideo } from '../video.js';
+import { webpPathFor } from '../webp.js';
 import { LONG_SPEAKER_NAME, loungeMessage, shortReaction, stubReaction } from './fixtures.js';
 
 const LAUNCH_TIMEOUT = 60_000;
@@ -79,6 +80,41 @@ describe('renderPng', () => {
       // A blank stage compresses to a few KB; a populated one never does.
       expect(bytes.byteLength).toBeGreaterThan(50_000);
       expect(pngSize(bytes)).toEqual({ width: STAGE_WIDTH, height: STAGE_HEIGHT });
+    },
+    RENDER_TIMEOUT,
+  );
+
+  it.skipIf(!ffmpegAvailable)(
+    'writes a WebP beside the PNG, small enough to be the one you share',
+    async () => {
+      const outPath = path.join(workDir, 'sidecar', 'reaction.png');
+      const written = await renderPng(stubReaction(), outPath, renderOptions());
+
+      // The PNG is still what the renderer returns; the sidecar is extra.
+      expect(written).toBe(outPath);
+
+      const webpPath = webpPathFor(outPath);
+      const [png, webp] = await Promise.all([fs.readFile(outPath), fs.readFile(webpPath)]);
+      expect(webp.subarray(0, 4).toString('ascii')).toBe('RIFF');
+      expect(webp.subarray(8, 12).toString('ascii')).toBe('WEBP');
+      // Measured at about a sixth on real scenes. A third is a loose floor that
+      // still fails if the encoder settings ever stop doing any work.
+      expect(webp.byteLength).toBeLessThan(png.byteLength / 3);
+    },
+    RENDER_TIMEOUT,
+  );
+
+  it(
+    'writes only the PNG when the sidecar is switched off',
+    async () => {
+      const outPath = path.join(workDir, 'no-sidecar', 'reaction.png');
+      await renderPng(stubReaction(), outPath, {
+        ...renderOptions(),
+        webp: { enabled: false },
+      });
+
+      await expect(fs.access(outPath)).resolves.toBeUndefined();
+      await expect(fs.access(webpPathFor(outPath))).rejects.toThrow();
     },
     RENDER_TIMEOUT,
   );

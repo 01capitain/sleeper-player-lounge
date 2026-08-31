@@ -2,7 +2,7 @@
 
 A local-first companion for the **hotelkit Fantasies** Sleeper slow draft. Every draft pick
 becomes a scene in a fictional NFL group chat — the drafted player reacts, teammates pile on,
-and a recurring cast of stars comments — rendered as a shareable PNG, GIF or MP4.
+and a recurring cast of stars comments — rendered as a shareable PNG, WebP, GIF or MP4.
 
 Nothing is posted automatically. You export an asset and drop it in the real league chat yourself.
 
@@ -170,10 +170,27 @@ never re-invokes the Director.
 
 | Format | What it is |
 |---|---|
-| `png` | The final chat state. Fastest, and the demo default. |
+| `png` | The final chat state. Fastest, and the demo default. Writes a WebP too. |
 | `mp4` | H.264 / yuv420p, 1080x1920. The preferred thing to share. |
 | `gif` | Downscaled to 540px for chat clients that prefer GIFs. |
 | `html` | One self-contained file that animates in a browser. |
+
+### The WebP beside every still
+
+`--format png` writes two files: `scene.png` and `scene.webp`. The WebP is
+about **a sixth** of the PNG at quality 85 and reads clean enough to be the one
+you paste into the league chat. Both are committed and synced.
+
+The PNG is still what the renderer returns, and the WebP is strictly a sidecar.
+Converting needs ffmpeg and rendering a still does not, so a machine with no
+ffmpeg logs a warning and produces the PNG exactly as before — which keeps
+`--format png` the honest fallback the MP4 encoder points people at.
+
+Tune it in `data/config/app.json` under `rendering.webp`, or turn it off:
+
+```json
+"webp": { "enabled": true, "quality": 85, "compressionLevel": 6 }
+```
 
 The `html` build plays the **same timeline the MP4 encoder uses**, so it is the
 quickest way to judge pacing before committing to an encode. CSS, JavaScript,

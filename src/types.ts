@@ -287,6 +287,21 @@ export interface RenderingConfig {
   showTypingIndicators: boolean;
   fictionalInterfaceBranding: boolean;
   watermark: string;
+  /**
+   * The WebP sidecar written beside every still. Optional, so a config that
+   * predates it still loads and gets the defaults. See `src/render/webp.ts`.
+   */
+  webp?: WebpConfig;
+}
+
+/** `rendering.webp` — libwebp settings for the still's sidecar. */
+export interface WebpConfig {
+  /** `false` writes the PNG and nothing else. Defaults to on. */
+  enabled?: boolean;
+  /** libwebp `-quality`, 0-100. Defaults to 85. */
+  quality?: number;
+  /** libwebp `-compression_level`, 0-6. Defaults to 6. */
+  compressionLevel?: number;
 }
 
 export interface AppConfig {

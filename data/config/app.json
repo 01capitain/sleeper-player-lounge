@@ -35,6 +35,11 @@
     "defaultDurationSeconds": 8,
     "showTypingIndicators": true,
     "fictionalInterfaceBranding": true,
+    "webp": {
+      "enabled": true,
+      "quality": 85,
+      "compressionLevel": 6
+    },
     "watermark": "Players Lounge \u2022 Fantasy parody"
   }
 }
